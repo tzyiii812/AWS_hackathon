@@ -2,22 +2,27 @@ import { StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { Text, View } from '@/components/Themed';
 import { useRouter } from 'expo-router';
 import { useGoals } from '@/context/GoalContext';
+import { useAuth } from '@/context/AuthContext';
+import { usePortfolio } from '@/context/PortfolioContext';
 
 export default function MeScreen() {
   const router = useRouter();
-  const { activeGoals, completedGoals, goalCount, completedCount } = useGoals();
+  const { activeGoals, completedGoals, completedCount } = useGoals();
+  const { session, signOut } = useAuth();
+  const { latest } = usePortfolio();
+  const displayName = session?.username?.split('@')[0] || 'Investor';
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       <View style={styles.header}>
         <Text style={styles.avatar}>🌱</Text>
-        <Text style={styles.name}>子珆</Text>
-        <Text style={styles.subtitle}>開始投資 628 天</Text>
+        <Text style={styles.name}>{displayName}</Text>
+        <Text style={styles.subtitle}>{session?.username}</Text>
       </View>
 
       <View style={styles.statsCard}>
         <View style={styles.statItem}>
-          <Text style={styles.statNumber}>6</Text>
+          <Text style={styles.statNumber}>{latest?.holdings.length ?? 0}</Text>
           <Text style={styles.statLabel}>持有股票</Text>
         </View>
         <View style={styles.statDivider} />
@@ -94,6 +99,9 @@ export default function MeScreen() {
         <Text style={styles.settingItem}>通知設定</Text>
         <Text style={styles.settingItem}>資料匯出</Text>
         <Text style={styles.settingItem}>隱私設定</Text>
+        <TouchableOpacity style={styles.signOutButton} onPress={signOut}>
+          <Text style={styles.signOutText}>登出</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.bottomPadding} />
@@ -150,5 +158,7 @@ const styles = StyleSheet.create({
   completedName: { fontSize: 15, color: '#BBBBBB', textDecorationLine: 'line-through' },
   achievement: { fontSize: 15, color: '#555555', paddingVertical: 10 },
   settingItem: { fontSize: 15, color: '#555555', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F4F1ED' },
+  signOutButton: { paddingTop: 18, alignItems: 'center' },
+  signOutText: { fontSize: 15, color: '#C47777', fontWeight: '500' },
   bottomPadding: { height: 40, backgroundColor: 'transparent' },
 });

@@ -8,11 +8,11 @@ import {
 import { Text, View } from '@/components/Themed';
 import { useRouter } from 'expo-router';
 import { useGoals } from '@/context/GoalContext';
+import { usePortfolio } from '@/context/PortfolioContext';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_WIDTH = SCREEN_WIDTH - 40;
 const CARD_HEIGHT = 200;
-const PORTFOLIO_VALUE = 682300;
 
 const AI_FEED = [
   { id: '1', icon: '📈', title: '台積電近期波動增加', content: '它占你投資組合的 24%，波動會直接影響你的目標進度。' },
@@ -23,6 +23,8 @@ const AI_FEED = [
 export default function HomeScreen() {
   const router = useRouter();
   const { activeGoals, completeGoal, totalTarget, completedCount } = useGoals();
+  const { latest } = usePortfolio();
+  const portfolioValue = latest?.totalMarketValue ?? 0;
   const [cardIndex, setCardIndex] = useState(0);
 
   // Total cards: 1 overview + N goals
@@ -51,7 +53,7 @@ export default function HomeScreen() {
 
     const goal = activeGoals[cardIndex - 1];
     if (!goal) return null;
-    const canComplete = PORTFOLIO_VALUE >= goal.targetAmount;
+    const canComplete = portfolioValue >= goal.targetAmount;
 
     return (
       <View style={styles.goalCard}>
@@ -112,14 +114,39 @@ export default function HomeScreen() {
       {/* Portfolio Snapshot */}
       <TouchableOpacity
         style={styles.card}
-        onPress={() => router.push('/holdings')}
+        onPress={() =>
+          latest ? router.push('/holdings') : router.push('/(tabs)/update')
+        }
         activeOpacity={0.8}
       >
         <Text style={styles.cardLabel}>我的投資組合</Text>
-        <Text style={styles.portfolioValue}>NT${PORTFOLIO_VALUE.toLocaleString()}</Text>
-        <Text style={styles.portfolioGain}>+NT$72,300 (+11.85%)</Text>
-        <Text style={styles.portfolioMeta}>持有 6 檔股票</Text>
-        <Text style={styles.viewAll}>查看所有持股 →</Text>
+        {latest ? (
+          <>
+            <Text style={styles.portfolioValue}>
+              NT${latest.totalMarketValue.toLocaleString('zh-TW')}
+            </Text>
+            <Text
+              style={
+                latest.totalPnL >= 0
+                  ? styles.portfolioGain
+                  : styles.portfolioLoss
+              }
+            >
+              {latest.totalPnL >= 0 ? '+' : '-'}NT$
+              {Math.abs(latest.totalPnL).toLocaleString('zh-TW')}
+            </Text>
+            <Text style={styles.portfolioMeta}>
+              持有 {latest.holdings.length} 檔股票・{latest.yearMonth}
+            </Text>
+            <Text style={styles.viewAll}>查看所有持股 →</Text>
+          </>
+        ) : (
+          <>
+            <Text style={styles.emptyPortfolioTitle}>尚未匯入持股</Text>
+            <Text style={styles.portfolioMeta}>上傳券商截圖，建立第一筆投資紀錄。</Text>
+            <Text style={styles.viewAll}>開始更新 →</Text>
+          </>
+        )}
       </TouchableOpacity>
 
       {/* AI Feed */}
@@ -262,6 +289,8 @@ const styles = StyleSheet.create({
   },
   cardLabel: { fontSize: 13, color: '#888888', marginBottom: 8, letterSpacing: 0.5 },
   portfolioValue: { fontSize: 32, fontWeight: '600', color: '#222222', marginBottom: 4 },
+  portfolioLoss: { fontSize: 14, color: '#D68E8E', marginTop: 4 },
+  emptyPortfolioTitle: { fontSize: 22, fontWeight: '600', color: '#222222', marginTop: 4, marginBottom: 8 },
   portfolioGain: { fontSize: 16, color: '#B6C9A8', fontWeight: '500', marginBottom: 8 },
   portfolioMeta: { fontSize: 14, color: '#888888' },
   viewAll: { fontSize: 14, color: '#AFC8E8', fontWeight: '500', marginTop: 14 },
