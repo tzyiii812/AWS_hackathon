@@ -5,24 +5,30 @@ import { useRouter } from 'expo-router';
 const JOURNALS = [
   {
     yearMonth: '2026-07',
-    monthLabel: 'July 2026',
+    monthLabel: 'July',
     title: '維持投入的一個月',
-    change: '資產 +NT$18,200',
+    summary: '沒有太多交易，但維持了原本的投入計畫。',
+    change: '+NT$18,200',
     goal: '東京旅行 73%',
+    mood: '😊',
   },
   {
     yearMonth: '2026-06',
-    monthLabel: 'June 2026',
+    monthLabel: 'June',
     title: '第一次收到 ETF 配息',
-    change: '資產 +NT$8,600',
+    summary: '收到人生第一筆配息，金額不大但意義重大。',
+    change: '+NT$8,600',
     goal: '股息 NT$1,280',
+    mood: '🎉',
   },
   {
     yearMonth: '2026-05',
-    monthLabel: 'May 2026',
+    monthLabel: 'May',
     title: '加薪後增加投入',
-    change: '資產 +NT$22,100',
-    goal: '東京旅行 58% → 63%',
+    summary: '多出來的收入幾乎都轉化成了投資。',
+    change: '+NT$22,100',
+    goal: '東京旅行 63%',
+    mood: '🚀',
   },
 ];
 
@@ -30,10 +36,10 @@ export default function JournalScreen() {
   const router = useRouter();
 
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       <View style={styles.header}>
         <Text style={styles.title}>Journal</Text>
-        <Text style={styles.subtitle}>你的投資人生紀錄</Text>
+        <Text style={styles.subtitle}>我的投資日記</Text>
       </View>
 
       {JOURNALS.map((journal) => (
@@ -46,15 +52,23 @@ export default function JournalScreen() {
               params: { yearMonth: journal.yearMonth },
             })
           }
-          activeOpacity={0.7}
+          activeOpacity={0.8}
         >
-          <Text style={styles.month}>{journal.monthLabel}</Text>
+          <View style={styles.cardTop}>
+            <Text style={styles.month}>{journal.monthLabel}</Text>
+            <Text style={styles.mood}>{journal.mood}</Text>
+          </View>
           <Text style={styles.cardTitle}>{journal.title}</Text>
-          <Text style={styles.cardText}>{journal.change}</Text>
-          <Text style={styles.cardText}>{journal.goal}</Text>
-          <Text style={styles.readMore}>閱讀完整月誌 →</Text>
+          <Text style={styles.cardSummary}>{journal.summary}</Text>
+          <View style={styles.cardMeta}>
+            <Text style={styles.metaText}>{journal.change}</Text>
+            <Text style={styles.metaDot}>・</Text>
+            <Text style={styles.metaText}>{journal.goal}</Text>
+          </View>
         </TouchableOpacity>
       ))}
+
+      <View style={styles.bottomPadding} />
     </ScrollView>
   );
 }
@@ -62,56 +76,80 @@ export default function JournalScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: '#FAF9F7',
   },
   header: {
-    padding: 20,
-    backgroundColor: '#F9FAFB',
+    padding: 24,
+    paddingBottom: 12,
+    backgroundColor: 'transparent',
   },
   title: {
     fontSize: 28,
-    fontWeight: '700',
-    color: '#111827',
+    fontWeight: '600',
+    color: '#222222',
   },
   subtitle: {
     fontSize: 14,
-    color: '#6B7280',
+    color: '#888888',
     marginTop: 4,
   },
   card: {
     backgroundColor: '#FFFFFF',
-    marginHorizontal: 16,
-    marginBottom: 12,
-    padding: 20,
-    borderRadius: 12,
+    marginHorizontal: 20,
+    marginBottom: 16,
+    padding: 24,
+    borderRadius: 24,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
     elevation: 2,
   },
+  cardTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+    backgroundColor: 'transparent',
+  },
   month: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
-    color: '#2563EB',
+    color: '#B6C9A8',
+    letterSpacing: 0.5,
     textTransform: 'uppercase',
-    marginBottom: 4,
+  },
+  mood: {
+    fontSize: 20,
   },
   cardTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '600',
-    color: '#111827',
+    color: '#222222',
     marginBottom: 8,
   },
-  cardText: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginTop: 2,
+  cardSummary: {
+    fontSize: 15,
+    color: '#555555',
+    lineHeight: 22,
+    marginBottom: 12,
   },
-  readMore: {
+  cardMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+  },
+  metaText: {
     fontSize: 13,
-    color: '#2563EB',
-    fontWeight: '500',
-    marginTop: 12,
+    color: '#888888',
+  },
+  metaDot: {
+    fontSize: 13,
+    color: '#CCCCCC',
+    marginHorizontal: 4,
+  },
+  bottomPadding: {
+    height: 40,
+    backgroundColor: 'transparent',
   },
 });

@@ -4,22 +4,13 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
-  Image,
 } from 'react-native';
 import { Text, View } from '@/components/Themed';
 
-// Mock data for OCR result
 const MOCK_OCR_RESULT = [
   { symbol: '2330', name: '台積電', shares: 200, avgCost: 710, marketValue: 168000 },
   { symbol: '0050', name: '元大台灣50', shares: 1000, avgCost: 120, marketValue: 132000 },
-  { symbol: '00919', name: '群益台灣精選高息', shares: 800, avgCost: 21, marketValue: 19200 },
-];
-
-// Mock data for previous portfolio
-const MOCK_PREVIOUS = [
-  { symbol: '2330', name: '台積電', shares: 150, avgCost: 710, marketValue: 126000 },
-  { symbol: '0050', name: '元大台灣50', shares: 900, avgCost: 120, marketValue: 118800 },
-  { symbol: '00919', name: '群益台灣精選高息', shares: 1000, avgCost: 21, marketValue: 24000 },
+  { symbol: '00919', name: '群益精選高息', shares: 800, avgCost: 21, marketValue: 19200 },
 ];
 
 export default function UpdatePortfolioScreen() {
@@ -36,60 +27,41 @@ export default function UpdatePortfolioScreen() {
   };
 
   return (
-    <ScrollView style={styles.container}>
-      {/* Progress Bar */}
+    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+      {/* Progress */}
       <View style={styles.progressContainer}>
         {[0, 1, 2, 3, 4].map((i) => (
           <View
             key={i}
             style={[
               styles.progressDot,
-              i <= step ? styles.progressDotActive : styles.progressDotInactive,
+              i <= step ? styles.progressActive : styles.progressInactive,
             ]}
           />
         ))}
       </View>
-      <Text style={styles.stepLabel}>
-        {step === 0 && '上傳截圖'}
-        {step === 1 && '確認持股'}
-        {step === 2 && '比較變化'}
-        {step === 3 && '留下筆記'}
-        {step === 4 && '完成！'}
-      </Text>
 
-      {/* Step 0: Upload Screenshot */}
+      {/* Step 0: Upload */}
       {step === 0 && (
-        <View style={styles.stepContent}>
-          <Text style={styles.stepTitle}>📸 上傳券商截圖</Text>
-          <Text style={styles.stepDescription}>
-            拍下或選擇你的券商 App 持股畫面截圖
-          </Text>
+        <View style={styles.content}>
+          <Text style={styles.stepTitle}>上傳券商截圖</Text>
+          <Text style={styles.stepDesc}>拍下或選擇你的持股畫面</Text>
 
           {!imageSelected ? (
-            <View style={styles.uploadArea}>
-              <TouchableOpacity
-                style={styles.uploadButton}
-                onPress={() => setImageSelected(true)}
-              >
-                <Text style={styles.uploadIcon}>📷</Text>
-                <Text style={styles.uploadText}>選擇圖片</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.uploadButtonSecondary}
-                onPress={() => setImageSelected(true)}
-              >
-                <Text style={styles.uploadIcon}>🖼️</Text>
-                <Text style={styles.uploadText}>從相簿選擇</Text>
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity
+              style={styles.uploadArea}
+              onPress={() => setImageSelected(true)}
+            >
+              <Text style={styles.uploadIcon}>📷</Text>
+              <Text style={styles.uploadText}>選擇圖片</Text>
+            </TouchableOpacity>
           ) : (
-            <View style={styles.imagePreview}>
-              <View style={styles.fakePlaceholder}>
-                <Text style={styles.fakePlaceholderText}>📊 券商截圖預覽</Text>
-                <Text style={styles.fakePlaceholderSubtext}>(已選擇圖片)</Text>
+            <View style={styles.previewArea}>
+              <View style={styles.preview}>
+                <Text style={styles.previewText}>📊 已選擇截圖</Text>
               </View>
-              <TouchableOpacity style={styles.primaryButton} onPress={nextStep}>
-                <Text style={styles.primaryButtonText}>開始辨識</Text>
+              <TouchableOpacity style={styles.primaryBtn} onPress={nextStep}>
+                <Text style={styles.primaryBtnText}>開始辨識</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -98,110 +70,94 @@ export default function UpdatePortfolioScreen() {
 
       {/* Step 1: OCR Result */}
       {step === 1 && (
-        <View style={styles.stepContent}>
-          <Text style={styles.stepTitle}>✅ 辨識結果</Text>
-          <Text style={styles.stepDescription}>
-            AI 偵測到 {MOCK_OCR_RESULT.length} 檔股票，請確認是否正確
+        <View style={styles.content}>
+          <Text style={styles.stepTitle}>辨識結果</Text>
+          <Text style={styles.stepDesc}>
+            AI 偵測到 {MOCK_OCR_RESULT.length} 檔股票
           </Text>
 
-          {MOCK_OCR_RESULT.map((stock, index) => (
-            <View key={index} style={styles.stockCard}>
-              <View style={styles.stockHeader}>
-                <Text style={styles.stockSymbol}>{stock.symbol}</Text>
+          {MOCK_OCR_RESULT.map((stock, i) => (
+            <View key={i} style={styles.stockCard}>
+              <View style={styles.stockTop}>
                 <Text style={styles.stockName}>{stock.name}</Text>
+                <Text style={styles.stockCode}>{stock.symbol}</Text>
               </View>
-              <View style={styles.stockDetails}>
-                <View style={styles.stockDetailItem}>
-                  <Text style={styles.stockLabel}>持有股數</Text>
-                  <Text style={styles.stockValue}>{stock.shares} 股</Text>
-                </View>
-                <View style={styles.stockDetailItem}>
-                  <Text style={styles.stockLabel}>平均成本</Text>
-                  <Text style={styles.stockValue}>NT${stock.avgCost}</Text>
-                </View>
-                <View style={styles.stockDetailItem}>
-                  <Text style={styles.stockLabel}>目前市值</Text>
-                  <Text style={styles.stockValue}>NT${stock.marketValue.toLocaleString()}</Text>
-                </View>
+              <View style={styles.stockRow}>
+                <Text style={styles.stockLabel}>{stock.shares} 股</Text>
+                <Text style={styles.stockValue}>
+                  NT${stock.marketValue.toLocaleString()}
+                </Text>
               </View>
             </View>
           ))}
 
-          <View style={styles.buttonRow}>
-            <TouchableOpacity style={styles.secondaryButton} onPress={prevStep}>
-              <Text style={styles.secondaryButtonText}>重新上傳</Text>
+          <View style={styles.btnRow}>
+            <TouchableOpacity style={styles.secondaryBtn} onPress={prevStep}>
+              <Text style={styles.secondaryBtnText}>重新上傳</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.primaryButton} onPress={nextStep}>
-              <Text style={styles.primaryButtonText}>確認正確</Text>
+            <TouchableOpacity style={styles.primaryBtn} onPress={nextStep}>
+              <Text style={styles.primaryBtnText}>確認</Text>
             </TouchableOpacity>
           </View>
         </View>
       )}
 
-      {/* Step 2: Compare History */}
+      {/* Step 2: Compare */}
       {step === 2 && (
-        <View style={styles.stepContent}>
-          <Text style={styles.stepTitle}>📊 與上次比較</Text>
-          <Text style={styles.stepDescription}>以下是本次更新的持股變化</Text>
+        <View style={styles.content}>
+          <Text style={styles.stepTitle}>與上次比較</Text>
+          <Text style={styles.stepDesc}>本次更新的持股變化</Text>
 
           <View style={styles.changeCard}>
-            <Text style={styles.changeTitle}>📈 增加</Text>
-            <Text style={styles.changeItem}>2330 台積電：150 → 200 股 (+50)</Text>
-            <Text style={styles.changeItem}>0050 元大台灣50：900 → 1000 股 (+100)</Text>
+            <Text style={styles.changeLabel}>📈 增加</Text>
+            <Text style={styles.changeItem}>台積電：150 → 200 股</Text>
+            <Text style={styles.changeItem}>元大台灣50：900 → 1000 股</Text>
           </View>
 
           <View style={styles.changeCard}>
-            <Text style={styles.changeTitleNeg}>📉 減少</Text>
-            <Text style={styles.changeItem}>00919 群益台灣精選高息：1000 → 800 股 (-200)</Text>
+            <Text style={styles.changeLabelNeg}>📉 減少</Text>
+            <Text style={styles.changeItem}>群益精選高息：1000 → 800 股</Text>
           </View>
 
           <View style={styles.summaryCard}>
-            <Text style={styles.summaryTitle}>本次摘要</Text>
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>總市值變化</Text>
-              <Text style={styles.summaryPositive}>+NT$18,200</Text>
-            </View>
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>持股數量</Text>
-              <Text style={styles.summaryValue}>3 檔（不變）</Text>
-            </View>
+            <Text style={styles.summaryText}>總市值變化</Text>
+            <Text style={styles.summaryValue}>+NT$18,200</Text>
           </View>
 
-          <View style={styles.buttonRow}>
-            <TouchableOpacity style={styles.secondaryButton} onPress={prevStep}>
-              <Text style={styles.secondaryButtonText}>上一步</Text>
+          <View style={styles.btnRow}>
+            <TouchableOpacity style={styles.secondaryBtn} onPress={prevStep}>
+              <Text style={styles.secondaryBtnText}>上一步</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.primaryButton} onPress={nextStep}>
-              <Text style={styles.primaryButtonText}>下一步</Text>
+            <TouchableOpacity style={styles.primaryBtn} onPress={nextStep}>
+              <Text style={styles.primaryBtnText}>下一步</Text>
             </TouchableOpacity>
           </View>
         </View>
       )}
 
-      {/* Step 3: Optional Note */}
+      {/* Step 3: Note */}
       {step === 3 && (
-        <View style={styles.stepContent}>
-          <Text style={styles.stepTitle}>💬 留下一句話</Text>
-          <Text style={styles.stepDescription}>
-            這次更新，有什麼想記住的嗎？（選填）
+        <View style={styles.content}>
+          <Text style={styles.stepTitle}>留下一句話</Text>
+          <Text style={styles.stepDesc}>
+            這次更新，有什麼想記住的嗎？
           </Text>
 
           <TextInput
             style={styles.noteInput}
-            placeholder="例如：這個月加薪了，多買了一些 ETF"
-            placeholderTextColor="#9CA3AF"
+            placeholder="例如：加薪了，多買了一些 ETF"
+            placeholderTextColor="#BBBBBB"
             value={note}
             onChangeText={setNote}
             multiline
-            numberOfLines={3}
           />
 
-          <View style={styles.buttonRow}>
-            <TouchableOpacity style={styles.secondaryButton} onPress={prevStep}>
-              <Text style={styles.secondaryButtonText}>上一步</Text>
+          <View style={styles.btnRow}>
+            <TouchableOpacity style={styles.secondaryBtn} onPress={prevStep}>
+              <Text style={styles.secondaryBtnText}>上一步</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.primaryButton} onPress={nextStep}>
-              <Text style={styles.primaryButtonText}>{note ? '儲存' : '跳過'}</Text>
+            <TouchableOpacity style={styles.primaryBtn} onPress={nextStep}>
+              <Text style={styles.primaryBtnText}>{note ? '儲存' : '跳過'}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -209,35 +165,22 @@ export default function UpdatePortfolioScreen() {
 
       {/* Step 4: Done */}
       {step === 4 && (
-        <View style={styles.stepContent}>
-          <View style={styles.doneContainer}>
-            <Text style={styles.doneIcon}>🎉</Text>
-            <Text style={styles.doneTitle}>更新完成！</Text>
-            <Text style={styles.doneDescription}>
-              你的投資組合已更新。{'\n'}
-              系統將自動更新目標進度與分析。
+        <View style={styles.content}>
+          <View style={styles.doneCenter}>
+            <Text style={styles.doneIcon}>🌿</Text>
+            <Text style={styles.doneTitle}>更新完成</Text>
+            <Text style={styles.doneDesc}>
+              投資組合已更新。{'\n'}系統將自動更新目標進度。
             </Text>
-
-            <View style={styles.doneStats}>
-              <View style={styles.doneStatItem}>
-                <Text style={styles.doneStatNumber}>3</Text>
-                <Text style={styles.doneStatLabel}>檔股票</Text>
-              </View>
-              <View style={styles.doneStatItem}>
-                <Text style={styles.doneStatNumber}>NT$319,200</Text>
-                <Text style={styles.doneStatLabel}>總市值</Text>
-              </View>
-            </View>
 
             {note ? (
               <View style={styles.notePreview}>
-                <Text style={styles.notePreviewLabel}>你的筆記</Text>
                 <Text style={styles.notePreviewText}>"{note}"</Text>
               </View>
             ) : null}
 
-            <TouchableOpacity style={styles.primaryButton} onPress={reset}>
-              <Text style={styles.primaryButtonText}>回到首頁</Text>
+            <TouchableOpacity style={styles.primaryBtn} onPress={reset}>
+              <Text style={styles.primaryBtnText}>回到首頁</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -249,304 +192,235 @@ export default function UpdatePortfolioScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: '#FAF9F7',
   },
   progressContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
-    alignItems: 'center',
+    gap: 8,
     paddingTop: 16,
     paddingBottom: 8,
-    gap: 8,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: 'transparent',
   },
   progressDot: {
-    width: 40,
+    width: 32,
     height: 4,
     borderRadius: 2,
   },
-  progressDotActive: {
-    backgroundColor: '#2563EB',
+  progressActive: {
+    backgroundColor: '#222222',
   },
-  progressDotInactive: {
-    backgroundColor: '#E5E7EB',
+  progressInactive: {
+    backgroundColor: '#EDEBE8',
   },
-  stepLabel: {
-    textAlign: 'center',
-    fontSize: 12,
-    color: '#6B7280',
-    marginBottom: 16,
-  },
-  stepContent: {
-    padding: 16,
-    backgroundColor: '#F9FAFB',
-  },
-  stepTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 8,
-  },
-  stepDescription: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginBottom: 20,
-  },
-  uploadArea: {
-    gap: 12,
+  content: {
+    padding: 24,
     backgroundColor: 'transparent',
   },
-  uploadButton: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 2,
-    borderColor: '#2563EB',
-    borderStyle: 'dashed',
-    borderRadius: 12,
-    padding: 32,
-    alignItems: 'center',
+  stepTitle: {
+    fontSize: 24,
+    fontWeight: '600',
+    color: '#222222',
+    marginBottom: 8,
   },
-  uploadButtonSecondary: {
+  stepDesc: {
+    fontSize: 15,
+    color: '#888888',
+    marginBottom: 24,
+  },
+  uploadArea: {
     backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 12,
-    padding: 20,
+    borderRadius: 24,
+    padding: 48,
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    elevation: 2,
   },
   uploadIcon: {
-    fontSize: 32,
-    marginBottom: 8,
+    fontSize: 40,
+    marginBottom: 12,
   },
   uploadText: {
     fontSize: 16,
-    fontWeight: '500',
-    color: '#374151',
+    color: '#555555',
   },
-  imagePreview: {
+  previewArea: {
     gap: 16,
     backgroundColor: 'transparent',
   },
-  fakePlaceholder: {
-    backgroundColor: '#EFF6FF',
-    borderRadius: 12,
+  preview: {
+    backgroundColor: '#F4F1ED',
+    borderRadius: 20,
     padding: 40,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#BFDBFE',
   },
-  fakePlaceholderText: {
+  previewText: {
     fontSize: 18,
-    color: '#2563EB',
-    fontWeight: '600',
-  },
-  fakePlaceholderSubtext: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginTop: 4,
+    color: '#555555',
   },
   stockCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: 20,
+    padding: 20,
     marginBottom: 12,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
     elevation: 2,
   },
-  stockHeader: {
+  stockTop: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    gap: 8,
-    marginBottom: 12,
+    marginBottom: 10,
     backgroundColor: 'transparent',
-  },
-  stockSymbol: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#2563EB',
   },
   stockName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#111827',
+    fontSize: 17,
+    fontWeight: '500',
+    color: '#222222',
   },
-  stockDetails: {
-    gap: 6,
-    backgroundColor: 'transparent',
+  stockCode: {
+    fontSize: 13,
+    color: '#BBBBBB',
   },
-  stockDetailItem: {
+  stockRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     backgroundColor: 'transparent',
   },
   stockLabel: {
     fontSize: 14,
-    color: '#6B7280',
+    color: '#888888',
   },
   stockValue: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '500',
-    color: '#111827',
+    color: '#222222',
   },
   changeCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: 20,
+    padding: 20,
     marginBottom: 12,
   },
-  changeTitle: {
-    fontSize: 15,
+  changeLabel: {
+    fontSize: 14,
     fontWeight: '600',
-    color: '#10B981',
+    color: '#B6C9A8',
     marginBottom: 8,
   },
-  changeTitleNeg: {
-    fontSize: 15,
+  changeLabelNeg: {
+    fontSize: 14,
     fontWeight: '600',
-    color: '#EF4444',
+    color: '#E8A8A8',
     marginBottom: 8,
   },
   changeItem: {
-    fontSize: 14,
-    color: '#374151',
+    fontSize: 15,
+    color: '#555555',
     paddingVertical: 4,
   },
   summaryCard: {
-    backgroundColor: '#EFF6FF',
-    borderRadius: 12,
-    padding: 16,
-    marginTop: 4,
+    backgroundColor: '#F4F1ED',
+    borderRadius: 20,
+    padding: 20,
     marginBottom: 16,
-  },
-  summaryTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#1E40AF',
-    marginBottom: 10,
-  },
-  summaryRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: 4,
-    backgroundColor: 'transparent',
+    alignItems: 'center',
   },
-  summaryLabel: {
-    fontSize: 14,
-    color: '#374151',
-  },
-  summaryPositive: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#10B981',
+  summaryText: {
+    fontSize: 15,
+    color: '#555555',
   },
   summaryValue: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#111827',
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#B6C9A8',
   },
-  noteInput: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 16,
-    color: '#111827',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    minHeight: 100,
-    textAlignVertical: 'top',
-    marginBottom: 20,
-  },
-  buttonRow: {
+  btnRow: {
     flexDirection: 'row',
     gap: 12,
     marginTop: 8,
     backgroundColor: 'transparent',
   },
-  primaryButton: {
+  primaryBtn: {
     flex: 1,
-    backgroundColor: '#2563EB',
-    borderRadius: 12,
-    padding: 16,
+    backgroundColor: '#222222',
+    borderRadius: 999,
+    paddingVertical: 16,
     alignItems: 'center',
   },
-  primaryButtonText: {
+  primaryBtnText: {
     color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  secondaryButton: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  secondaryButtonText: {
-    color: '#374151',
     fontSize: 16,
     fontWeight: '500',
   },
-  doneContainer: {
+  secondaryBtn: {
+    flex: 1,
+    backgroundColor: '#F4F1ED',
+    borderRadius: 999,
+    paddingVertical: 16,
     alignItems: 'center',
-    paddingVertical: 20,
+  },
+  secondaryBtnText: {
+    color: '#555555',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  noteInput: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 20,
+    fontSize: 16,
+    color: '#222222',
+    minHeight: 120,
+    textAlignVertical: 'top',
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    elevation: 2,
+  },
+  doneCenter: {
+    alignItems: 'center',
+    paddingTop: 40,
     backgroundColor: 'transparent',
   },
   doneIcon: {
     fontSize: 56,
-    marginBottom: 16,
+    marginBottom: 20,
   },
   doneTitle: {
     fontSize: 24,
-    fontWeight: '700',
-    color: '#111827',
+    fontWeight: '600',
+    color: '#222222',
     marginBottom: 8,
   },
-  doneDescription: {
-    fontSize: 14,
-    color: '#6B7280',
+  doneDesc: {
+    fontSize: 15,
+    color: '#888888',
     textAlign: 'center',
     lineHeight: 22,
     marginBottom: 24,
   },
-  doneStats: {
-    flexDirection: 'row',
-    gap: 32,
-    marginBottom: 24,
-    backgroundColor: 'transparent',
-  },
-  doneStatItem: {
-    alignItems: 'center',
-    backgroundColor: 'transparent',
-  },
-  doneStatNumber: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#2563EB',
-  },
-  doneStatLabel: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginTop: 4,
-  },
   notePreview: {
-    backgroundColor: '#F3F4F6',
-    borderRadius: 12,
+    backgroundColor: '#F4F1ED',
+    borderRadius: 16,
     padding: 16,
     marginBottom: 24,
     width: '100%',
   },
-  notePreviewLabel: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginBottom: 4,
-  },
   notePreviewText: {
     fontSize: 15,
-    color: '#374151',
+    color: '#555555',
     fontStyle: 'italic',
+    textAlign: 'center',
   },
 });

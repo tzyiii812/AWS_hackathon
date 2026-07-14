@@ -7,30 +7,42 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: '#2563EB',
-        tabBarInactiveTintColor: '#9CA3AF',
+        tabBarActiveTintColor: '#222222',
+        tabBarInactiveTintColor: '#BBBBBB',
         tabBarStyle: {
           backgroundColor: '#FFFFFF',
-          borderTopWidth: 1,
-          borderTopColor: '#F3F4F6',
-          height: 60,
-          paddingBottom: 8,
-          paddingTop: 8,
+          borderTopWidth: 0,
+          height: 64,
+          paddingBottom: 10,
+          paddingTop: 10,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: -2 },
+          shadowOpacity: 0.03,
+          shadowRadius: 8,
+          elevation: 4,
+        },
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: '500',
         },
         headerStyle: {
-          backgroundColor: '#FFFFFF',
+          backgroundColor: '#FAF9F7',
+          shadowColor: 'transparent',
+          elevation: 0,
         },
         headerTitleStyle: {
           fontWeight: '600',
           fontSize: 18,
+          color: '#222222',
         },
       }}>
       <Tabs.Screen
         name="index"
         options={{
           title: 'Home',
+          headerShown: false,
           tabBarIcon: ({ color }) => (
-            <FontAwesome name="home" size={24} color={color} />
+            <FontAwesome name="home" size={22} color={color} />
           ),
         }}
       />
@@ -38,8 +50,9 @@ export default function TabLayout() {
         name="journal"
         options={{
           title: 'Journal',
+          headerShown: false,
           tabBarIcon: ({ color }) => (
-            <FontAwesome name="book" size={24} color={color} />
+            <FontAwesome name="book" size={22} color={color} />
           ),
         }}
       />
@@ -50,7 +63,7 @@ export default function TabLayout() {
           headerTitle: 'Update Portfolio',
           tabBarIcon: () => (
             <View style={styles.plusButton}>
-              <FontAwesome name="plus" size={20} color="#FFFFFF" />
+              <FontAwesome name="plus" size={18} color="#FFFFFF" />
             </View>
           ),
         }}
@@ -59,8 +72,9 @@ export default function TabLayout() {
         name="insights"
         options={{
           title: 'Insights',
+          headerShown: false,
           tabBarIcon: ({ color }) => (
-            <FontAwesome name="line-chart" size={24} color={color} />
+            <FontAwesome name="line-chart" size={20} color={color} />
           ),
         }}
       />
@@ -68,8 +82,9 @@ export default function TabLayout() {
         name="me"
         options={{
           title: 'Me',
+          headerShown: false,
           tabBarIcon: ({ color }) => (
-            <FontAwesome name="user" size={24} color={color} />
+            <FontAwesome name="user" size={22} color={color} />
           ),
         }}
       />
@@ -79,16 +94,16 @@ export default function TabLayout() {
 
 const styles = StyleSheet.create({
   plusButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#2563EB',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#222222',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
-    shadowColor: '#2563EB',
+    marginBottom: 4,
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.15,
     shadowRadius: 8,
     elevation: 6,
   },

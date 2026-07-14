@@ -7,6 +7,7 @@ import { useEffect } from 'react';
 import 'react-native-reanimated';
 
 import { useColorScheme } from '@/components/useColorScheme';
+import { GoalProvider } from '@/context/GoalContext';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -49,6 +50,7 @@ function RootLayoutNav() {
   const colorScheme = useColorScheme();
 
   return (
+    <GoalProvider>
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <Stack>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
@@ -59,7 +61,30 @@ function RootLayoutNav() {
             headerBackTitle: 'Journal',
           }}
         />
+        <Stack.Screen
+          name="ask-ai"
+          options={{
+            title: 'Ask AI',
+            headerBackTitle: 'Insights',
+          }}
+        />
+        <Stack.Screen
+          name="holdings"
+          options={{
+            title: '',
+            headerBackTitle: 'Home',
+          }}
+        />
+        <Stack.Screen
+          name="add-goal"
+          options={{
+            title: '新增目標',
+            headerBackTitle: 'Me',
+            presentation: 'modal',
+          }}
+        />
       </Stack>
     </ThemeProvider>
+    </GoalProvider>
   );
 }
