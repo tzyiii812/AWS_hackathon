@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import { useGoals } from '@/context/GoalContext';
 import { useAuth } from '@/context/AuthContext';
 import { usePortfolio } from '@/context/PortfolioContext';
+import { usePortfolioHistory } from '@/context/PortfolioHistoryContext';
 
 export default function MeScreen() {
   const router = useRouter();

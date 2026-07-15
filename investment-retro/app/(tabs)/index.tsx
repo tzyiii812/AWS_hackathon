@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   StyleSheet,
   ScrollView,
@@ -7,8 +7,10 @@ import {
 } from 'react-native';
 import { Text, View } from '@/components/Themed';
 import { useRouter } from 'expo-router';
+import { useAuth } from '@/context/AuthContext';
 import { useGoals } from '@/context/GoalContext';
 import { usePortfolio } from '@/context/PortfolioContext';
+import { usePortfolioHistory } from '@/context/PortfolioHistoryContext';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_WIDTH = SCREEN_WIDTH - 40;

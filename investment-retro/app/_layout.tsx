@@ -11,6 +11,7 @@ import { useColorScheme } from '@/components/useColorScheme';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { GoalProvider } from '@/context/GoalContext';
 import { PortfolioProvider } from '@/context/PortfolioContext';
+import { PortfolioHistoryProvider } from '@/context/PortfolioHistoryContext';
 
 export { ErrorBoundary } from 'expo-router';
 
@@ -78,32 +79,34 @@ function RootLayoutNav() {
   return (
     <GoalProvider>
       <PortfolioProvider>
-        <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-          <Stack>
-            <Stack.Screen name="login" options={{ headerShown: false }} />
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen
-              name="journal-detail"
-              options={{ title: '', headerBackTitle: 'Journal' }}
-            />
-            <Stack.Screen
-              name="ask-ai"
-              options={{ title: 'Ask AI', headerBackTitle: 'Insights' }}
-            />
-            <Stack.Screen
-              name="holdings"
-              options={{ title: '', headerBackTitle: 'Home' }}
-            />
-            <Stack.Screen
-              name="add-goal"
-              options={{
-                title: '新增目標',
-                headerBackTitle: 'Me',
-                presentation: 'modal',
-              }}
-            />
-          </Stack>
-        </ThemeProvider>
+        <PortfolioHistoryProvider>
+          <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+            <Stack>
+              <Stack.Screen name="login" options={{ headerShown: false }} />
+              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+              <Stack.Screen
+                name="journal-detail"
+                options={{ title: '', headerBackTitle: 'Journal' }}
+              />
+              <Stack.Screen
+                name="ask-ai"
+                options={{ title: 'Ask AI', headerBackTitle: 'Insights' }}
+              />
+              <Stack.Screen
+                name="holdings"
+                options={{ title: '', headerBackTitle: 'Home' }}
+              />
+              <Stack.Screen
+                name="add-goal"
+                options={{
+                  title: '新增目標',
+                  headerBackTitle: 'Me',
+                  presentation: 'modal',
+                }}
+              />
+            </Stack>
+          </ThemeProvider>
+        </PortfolioHistoryProvider>
       </PortfolioProvider>
     </GoalProvider>
   );

@@ -114,6 +114,24 @@ export default function UpdatePortfolioScreen() {
     [parsedHoldings]
   );
 
+  const totalCost = useMemo(
+    () =>
+      parsedHoldings.reduce(
+        (sum, holding) => sum + (holding.avgCost != null ? holding.avgCost * holding.shares : 0),
+        0
+      ),
+    [parsedHoldings]
+  );
+
+  const totalPnL = useMemo(
+    () =>
+      parsedHoldings.reduce(
+        (sum, holding) => sum + (holding.pnl ?? 0),
+        0
+      ),
+    [parsedHoldings]
+  );
+
   const comparison = useMemo(() => {
     const previousBySymbol = new Map(
       (latest?.holdings ?? []).map((holding) => [
