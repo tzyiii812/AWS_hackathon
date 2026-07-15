@@ -42,7 +42,7 @@ const CORS_HEADERS = {
 };
 
 // === System Prompt ===
-function buildSystemPrompt(holdings, portfolioSummary, context) {
+function buildSystemPrompt(holdings, portfolioSummary, context, aiUserProfile) {
   const lines = [
     '你是一位專業但友善的投資顧問 AI，名字叫「投資小幫手」。',
     '你的任務是根據使用者的投資組合資料，用繁體中文回答問題。',
@@ -56,6 +56,73 @@ function buildSystemPrompt(holdings, portfolioSummary, context) {
     '- 回答長度適中，重點清楚，用換行和項目符號提高可讀性',
     '',
   ];
+
+  // AI User Profile — 個人化偏好
+  if (aiUserProfile && Object.values(aiUserProfile).some((v) => v != null)) {
+    lines.push('## 使用者投資偏好（請據此調整回答方式）');
+
+    if (aiUserProfile.analysisPriority) {
+      const labels = {
+        stability: '重視資產穩定',
+        growth: '重視長期成長',
+        income: '重視穩定配息',
+        goal_completion: '優先完成目標',
+        unsure: '尚未確定偏好',
+      };
+      lines.push(`- 分析重點：${labels[aiUserProfile.analysisPriority] || aiUserProfile.analysisPriority}`);
+    }
+
+    if (aiUserProfile.drawdownTolerance) {
+      const labels = {
+        low: '低（約 5% 即感到不安）',
+        medium_low: '中低（約 10%）',
+        medium: '中等（約 20%）',
+        high: '高（30% 以上也能長期持有）',
+        unsure: '尚未確定',
+      };
+      lines.push(`- 下跌承受度：${labels[aiUserProfile.drawdownTolerance] || aiUserProfile.drawdownTolerance}`);
+    }
+
+    if (aiUserProfile.investmentStyle) {
+      const labels = {
+        dca: '定期定額',
+        buy_and_hold: '買入後長期持有',
+        income: '以配息為主',
+        active: '會依市場主動調整',
+        beginner: '剛開始投資',
+      };
+      lines.push(`- 投資方式：${labels[aiUserProfile.investmentStyle] || aiUserProfile.investmentStyle}`);
+    }
+
+    if (aiUserProfile.goalTradeoff) {
+      const labels = {
+        goal_first: '優先準時完成目標',
+        balanced: '目標與成長兩者平衡',
+        growth_first: '可以延後目標，追求成長',
+        unsure: '尚未確定',
+      };
+      lines.push(`- 目標取捨：${labels[aiUserProfile.goalTradeoff] || aiUserProfile.goalTradeoff}`);
+    }
+
+    if (aiUserProfile.investmentHorizon) {
+      const labels = {
+        within_1_year: '一年內需要使用',
+        one_to_three_years: '1～3 年',
+        three_to_five_years: '3～5 年',
+        over_five_years: '5 年以上',
+        unsure: '尚未確定',
+      };
+      lines.push(`- 投資期限：${labels[aiUserProfile.investmentHorizon] || aiUserProfile.investmentHorizon}`);
+    }
+
+    lines.push('');
+    lines.push('請根據以上偏好調整你的回答角度和建議方式：');
+    lines.push('- 如果使用者重視穩定，避免建議高波動策略');
+    lines.push('- 如果使用者下跌承受度低，在回答中加入風險提醒');
+    lines.push('- 如果使用者是新手，使用更簡單的說明方式');
+    lines.push('- 如果使用者優先完成目標，將分析與目標達成時間連結');
+    lines.push('');
+  }
 
   if (portfolioSummary) {
     lines.push('## 使用者投資組合摘要');
@@ -128,10 +195,10 @@ export async function handler(event) {
       };
     }
 
-    const { message, holdings, portfolioSummary, context } = body;
+    const { message, holdings, portfolioSummary, context, aiUserProfile } = body;
 
     // Build system prompt with portfolio context
-    const systemPrompt = buildSystemPrompt(holdings, portfolioSummary, context);
+    const systemPrompt = buildSystemPrompt(holdings, portfolioSummary, context, aiUserProfile);
 
     // Call Bedrock Claude
     const requestBody = {

@@ -24,6 +24,8 @@ import {
   getImageReadUrl,
   uploadImageToS3,
 } from '@/services/api';
+import { useAIProfile } from '@/context/AIProfileContext';
+import { getAllQuestions } from '@/config/ai-profile-questions';
 
 /** Cached presigned URLs for goal images */
 const imageUrlCache: Record<string, string> = {};
@@ -88,6 +90,138 @@ function useImageUrls(keys: (string | null | undefined)[], getToken: () => Promi
 
   return urls;
 }
+
+/** AI Profile settings sub-section for the Me page */
+function AIProfileSettings() {
+  const { profile, updateField, resetField } = useAIProfile();
+  const { activeGoals } = useGoals();
+  const hasGoalDeadline = activeGoals.length > 0;
+  const questions = getAllQuestions(hasGoalDeadline);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const getAnswerLabel = (questionId: string): string | null => {
+    const q = questions.find((qq) => qq.id === questionId);
+    if (!q) return null;
+    const fieldValue = profile[q.fieldKey as keyof typeof profile] as string | null;
+    if (!fieldValue) return null;
+    const opt = q.options.find((o) => o.value === fieldValue);
+    return opt?.label || fieldValue;
+  };
+
+  return (
+    <View style={aiStyles.container}>
+      <Text style={aiStyles.sectionTitle}>AI 偏好設定</Text>
+      {questions.map((q) => {
+        const answerLabel = getAnswerLabel(q.id);
+        const isExpanded = expandedId === q.id;
+
+        return (
+          <View key={q.id} style={aiStyles.questionRow}>
+            <TouchableOpacity
+              style={aiStyles.questionHeader}
+              onPress={() => setExpandedId(isExpanded ? null : q.id)}
+              activeOpacity={0.7}
+            >
+              <Text style={aiStyles.questionLabel} numberOfLines={1}>
+                {q.question}
+              </Text>
+              <Text style={aiStyles.answerBadge}>
+                {answerLabel || '未設定'}
+              </Text>
+            </TouchableOpacity>
+
+            {isExpanded && (
+              <View style={aiStyles.optionsList}>
+                {q.options.map((opt) => {
+                  const currentValue = profile[q.fieldKey as keyof typeof profile];
+                  const isSelected = currentValue === opt.value;
+                  return (
+                    <TouchableOpacity
+                      key={opt.value}
+                      style={[aiStyles.optionBtn, isSelected && aiStyles.optionBtnSelected]}
+                      onPress={async () => {
+                        if (isSelected) {
+                          await resetField(q.fieldKey);
+                        } else {
+                          await updateField(q.fieldKey, opt.value);
+                        }
+                        setExpandedId(null);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[aiStyles.optionText, isSelected && aiStyles.optionTextSelected]}>
+                        {opt.label}
+                        {isSelected ? ' ✓' : ''}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            )}
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+const aiStyles = StyleSheet.create({
+  container: {
+    marginBottom: 20,
+    backgroundColor: 'transparent',
+  },
+  sectionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#555555',
+    marginBottom: 12,
+  },
+  questionRow: {
+    marginBottom: 8,
+    backgroundColor: 'transparent',
+  },
+  questionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 10,
+    backgroundColor: 'transparent',
+  },
+  questionLabel: {
+    fontSize: 13,
+    color: '#555555',
+    flex: 1,
+    marginRight: 8,
+  },
+  answerBadge: {
+    fontSize: 12,
+    color: '#86A874',
+    fontWeight: '500',
+  },
+  optionsList: {
+    paddingLeft: 4,
+    paddingBottom: 8,
+    backgroundColor: 'transparent',
+  },
+  optionBtn: {
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: '#F5F3F0',
+    marginBottom: 6,
+  },
+  optionBtnSelected: {
+    backgroundColor: '#E8F0E2',
+  },
+  optionText: {
+    fontSize: 13,
+    color: '#555555',
+  },
+  optionTextSelected: {
+    color: '#4A7A3A',
+    fontWeight: '500',
+  },
+});
 
 export default function MeScreen() {
   const router = useRouter();
@@ -414,6 +548,10 @@ export default function MeScreen() {
       {/* Settings */}
       <View style={styles.card}>
         <Text style={styles.cardLabel}>設定</Text>
+
+        {/* AI Profile Preferences */}
+        <AIProfileSettings />
+
         <TouchableOpacity style={styles.signOutButton} onPress={signOut}>
           <Text style={styles.signOutText}>登出</Text>
         </TouchableOpacity>

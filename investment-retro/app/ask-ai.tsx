@@ -13,6 +13,7 @@ import { useLocalSearchParams } from 'expo-router';
 import { usePortfolio } from '@/context/PortfolioContext';
 import { useAuth } from '@/context/AuthContext';
 import { APP_CONFIG } from '@/config/env';
+import { useAIProfile } from '@/context/AIProfileContext';
 import {
   buildPortfolioContext,
   buildMarketOverviewContext,
@@ -370,6 +371,7 @@ export default function AskAIScreen() {
   const { question: initialQuestion } = useLocalSearchParams<{ question?: string }>();
   const { latest } = usePortfolio();
   const { getAccessToken, isAuthenticated } = useAuth();
+  const { profile: aiProfile } = useAIProfile();
   const scrollRef = useRef<ScrollView>(null);
   const hasSentInitial = useRef(false);
 
@@ -446,6 +448,13 @@ export default function AskAIScreen() {
               context: {
                 currentDate: APP_TODAY_ISO,
                 note: '請根據使用者的完整持股資料（含市值、占比、損益）來回答問題。用繁體中文回答。',
+              },
+              aiUserProfile: {
+                analysisPriority: aiProfile.analysisPriority,
+                drawdownTolerance: aiProfile.drawdownTolerance,
+                investmentStyle: aiProfile.investmentStyle,
+                goalTradeoff: aiProfile.goalTradeoff,
+                investmentHorizon: aiProfile.investmentHorizon,
               },
             }),
             signal: controller.signal,

@@ -393,3 +393,32 @@ export async function getImageReadUrl(key: string, _accessToken?: string): Promi
   const data = await response.json();
   return data.url;
 }
+
+// === AI Profile ===
+
+export type AIProfileData = {
+  analysisPriority: string | null;
+  drawdownTolerance: string | null;
+  investmentStyle: string | null;
+  goalTradeoff: string | null;
+  investmentHorizon: string | null;
+  completedQuestionIds: string[];
+  source: string;
+  updatedAt: string | null;
+};
+
+export async function getAIProfile(
+  accessToken: string
+): Promise<{ profile: AIProfileData }> {
+  return apiRequest('/user/ai-profile', accessToken);
+}
+
+export async function patchAIProfile(
+  accessToken: string,
+  updates: Record<string, string | null>
+): Promise<{ profile: AIProfileData; message?: string }> {
+  return apiRequest('/user/ai-profile', accessToken, {
+    method: 'PATCH',
+    body: JSON.stringify(updates),
+  });
+}

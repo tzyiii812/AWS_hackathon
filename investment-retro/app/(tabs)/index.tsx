@@ -14,6 +14,7 @@ import { usePortfolio } from '@/context/PortfolioContext';
 import { usePortfolioPnL } from '@/hooks/usePortfolioPnL';
 import { useRealizedPnL } from '@/hooks/useRealizedPnL';
 import { getImageReadUrl } from '@/services/api';
+import { AIProfileCard } from '@/components/ai-profile';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_WIDTH = SCREEN_WIDTH - 40;
@@ -308,6 +309,9 @@ export default function HomeScreen() {
           ) : null}
         </View>
       ) : null}
+
+      {/* AI Profile Card */}
+      <AIProfileCard />
 
       {/* Tips */}
       {latest && (

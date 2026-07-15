@@ -12,6 +12,7 @@ import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { GoalProvider } from '@/context/GoalContext';
 import { PortfolioProvider } from '@/context/PortfolioContext';
 import { PortfolioHistoryProvider } from '@/context/PortfolioHistoryContext';
+import { AIProfileProvider } from '@/context/AIProfileContext';
 
 export { ErrorBoundary } from 'expo-router';
 
@@ -80,32 +81,34 @@ function RootLayoutNav() {
     <GoalProvider>
       <PortfolioProvider>
         <PortfolioHistoryProvider>
-          <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-            <Stack>
-              <Stack.Screen name="login" options={{ headerShown: false }} />
-              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-              <Stack.Screen
-                name="journal-detail"
-                options={{ title: '', headerBackTitle: 'Journal' }}
-              />
-              <Stack.Screen
-                name="ask-ai"
-                options={{ title: 'Ask AI', headerBackTitle: 'Insights' }}
-              />
-              <Stack.Screen
-                name="holdings"
-                options={{ title: '', headerBackTitle: 'Home' }}
-              />
-              <Stack.Screen
-                name="add-goal"
-                options={{
-                  title: '新增目標',
-                  headerBackTitle: 'Me',
-                  presentation: 'modal',
-                }}
-              />
-            </Stack>
-          </ThemeProvider>
+          <AIProfileProvider>
+            <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+              <Stack>
+                <Stack.Screen name="login" options={{ headerShown: false }} />
+                <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                <Stack.Screen
+                  name="journal-detail"
+                  options={{ title: '', headerBackTitle: 'Journal' }}
+                />
+                <Stack.Screen
+                  name="ask-ai"
+                  options={{ title: 'Ask AI', headerBackTitle: 'Insights' }}
+                />
+                <Stack.Screen
+                  name="holdings"
+                  options={{ title: '', headerBackTitle: 'Home' }}
+                />
+                <Stack.Screen
+                  name="add-goal"
+                  options={{
+                    title: '新增目標',
+                    headerBackTitle: 'Me',
+                    presentation: 'modal',
+                  }}
+                />
+              </Stack>
+            </ThemeProvider>
+          </AIProfileProvider>
         </PortfolioHistoryProvider>
       </PortfolioProvider>
     </GoalProvider>
