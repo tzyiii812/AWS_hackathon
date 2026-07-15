@@ -1,0 +1,10 @@
+{
+  "name": "ai-chat-lambda",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Investment Retro AI Chat - Bedrock Claude Lambda",
+  "main": "index.mjs",
+  "dependencies": {
+    "@aws-sdk/client-bedrock-runtime": "^3.700.0"
+  }
+}

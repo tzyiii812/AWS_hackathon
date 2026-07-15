@@ -107,7 +107,7 @@ export function useRealizedPnL(): RealizedPnLSummary {
       });
 
     return () => { active = false; };
-  }, [refreshKey]);
+  }, [refreshKey, portfolios]);
 
   /** 使用者填完價格後呼叫，觸發重新讀取 store */
   const refresh = useCallback(() => {

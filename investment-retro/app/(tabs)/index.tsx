@@ -11,6 +11,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useGoals } from '@/context/GoalContext';
 import { usePortfolio } from '@/context/PortfolioContext';
 import { usePortfolioPnL } from '@/hooks/usePortfolioPnL';
+import { useRealizedPnL } from '@/hooks/useRealizedPnL';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_WIDTH = SCREEN_WIDTH - 40;
@@ -24,11 +25,13 @@ const PLACEHOLDER_TIPS = [
 export default function HomeScreen() {
   const router = useRouter();
   const { session } = useAuth();
-  const { activeGoals, completeGoal, totalTarget, completedCount } = useGoals();
+  const { activeGoals, totalTarget, completedCount } = useGoals();
   const { latest } = usePortfolio();
   const pnl = usePortfolioPnL();
+  const realized = useRealizedPnL();
   const portfolioValue = pnl.totalMarketValue;
   const [cardIndex, setCardIndex] = useState(0);
+  const [realizedExpanded, setRealizedExpanded] = useState(false);
 
   // 從 usePortfolioPnL hook 取得計算結果
   const { unrealizedPnL, returnRate } = pnl;
@@ -59,11 +62,15 @@ export default function HomeScreen() {
 
     const goal = activeGoals[cardIndex - 1];
     if (!goal) return null;
-    const canComplete = portfolioValue >= goal.targetAmount;
+
+    // Progress based on profit, not total market value
+    const profit = (unrealizedPnL ?? 0) + (realized.totalRealizedPnL ?? 0);
+    const progress = goal.targetAmount > 0
+      ? Math.min((profit / goal.targetAmount) * 100, 100)
+      : 0;
 
     return (
       <View style={styles.goalCard}>
-        <Text style={styles.goalIcon}>{goal.icon}</Text>
         <Text style={styles.goalName}>{goal.name}</Text>
         <Text style={styles.goalTarget}>
           NT${goal.targetAmount.toLocaleString()}
@@ -71,15 +78,14 @@ export default function HomeScreen() {
         {goal.description ? (
           <Text style={styles.goalDesc}>{goal.description}</Text>
         ) : null}
-        {canComplete && (
-          <TouchableOpacity
-            style={styles.completeBtn}
-            onPress={() => completeGoal(goal.id)}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.completeBtnText}>Complete</Text>
-          </TouchableOpacity>
-        )}
+        <View style={styles.goalProgressBar}>
+          <View style={[styles.goalProgressFill, { width: `${Math.max(progress, 0)}%` }]} />
+        </View>
+        <Text style={styles.goalProgressText}>
+          {progress >= 100
+            ? '🎉 已達標！去「我」頁面完成目標'
+            : `獲利進度 ${progress.toFixed(0)}%`}
+        </Text>
       </View>
     );
   };
@@ -158,6 +164,65 @@ export default function HomeScreen() {
           </>
         )}
       </TouchableOpacity>
+
+      {/* Realized PnL Card */}
+      {latest && (realized.totalRealizedPnL !== null || realized.confirmedCount > 0) ? (
+        <View style={styles.card}>
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => setRealizedExpanded((v) => !v)}
+          >
+            <View style={styles.realizedHeader}>
+              <Text style={styles.cardLabel}>已實現損益</Text>
+              <Text style={styles.realizedToggle}>
+                {realizedExpanded ? '收起 ▲' : '展開 ▼'}
+              </Text>
+            </View>
+            <Text
+              style={
+                (realized.totalRealizedPnL ?? 0) >= 0
+                  ? styles.realizedGain
+                  : styles.realizedLoss
+              }
+            >
+              {realized.totalRealizedPnL != null
+                ? `${realized.totalRealizedPnL >= 0 ? '+' : ''}NT$${Math.abs(realized.totalRealizedPnL).toLocaleString('zh-TW')}`
+                : 'NT$0'}
+            </Text>
+            <Text style={styles.realizedMeta}>
+              {realized.confirmedCount} 筆交易
+              {realized.skippedCount > 0 ? `・${realized.skippedCount} 筆已跳過` : ''}
+            </Text>
+          </TouchableOpacity>
+
+          {realizedExpanded && realized.trades.length > 0 ? (
+            <View style={styles.realizedList}>
+              {realized.trades.map((trade, idx) => (
+                <View key={`${trade.symbol}-${trade.yearMonth}-${idx}`} style={styles.realizedRow}>
+                  <View style={styles.realizedRowLeft}>
+                    <Text style={styles.realizedName}>
+                      {trade.name}{trade.isFullSell ? '（清倉）' : ''}
+                    </Text>
+                    <Text style={styles.realizedDetail}>
+                      {trade.yearMonth}・{trade.soldShares.toLocaleString('zh-TW')} 股・均價 NT${trade.sellPrice}
+                    </Text>
+                  </View>
+                  <Text
+                    style={
+                      trade.realizedPnL >= 0
+                        ? styles.realizedItemGain
+                        : styles.realizedItemLoss
+                    }
+                  >
+                    {trade.realizedPnL >= 0 ? '+' : ''}NT$
+                    {Math.abs(trade.realizedPnL).toLocaleString('zh-TW')}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
+        </View>
+      ) : null}
 
       {/* Tips */}
       {latest && (
@@ -259,15 +324,15 @@ const styles = StyleSheet.create({
   goalCardTitle: { fontSize: 16, fontWeight: '500', color: '#555555', marginBottom: 12 },
   totalAmount: { fontSize: 32, fontWeight: '600', color: '#222222' },
   totalLabel: { fontSize: 14, color: '#888888', marginTop: 4 },
-  goalIcon: { fontSize: 28, marginBottom: 8 },
   goalName: { fontSize: 22, fontWeight: '600', color: '#222222', marginBottom: 6 },
   goalTarget: { fontSize: 15, color: '#888888' },
   goalDesc: { fontSize: 13, color: '#BBBBBB', marginTop: 6 },
-  completeBtn: {
-    marginTop: 16, backgroundColor: '#B6C9A8', borderRadius: 999,
-    paddingVertical: 12, alignItems: 'center',
+  goalProgressBar: {
+    height: 4, borderRadius: 2, backgroundColor: '#F0EDE8',
+    marginTop: 14, overflow: 'hidden',
   },
-  completeBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '500' },
+  goalProgressFill: { height: 4, borderRadius: 2, backgroundColor: '#86A874' },
+  goalProgressText: { fontSize: 12, color: '#AAAAAA', marginTop: 6 },
 
   // Dots
   dotsContainer: {
@@ -306,6 +371,37 @@ const styles = StyleSheet.create({
   feedContent: { fontSize: 14, color: '#555555', lineHeight: 21 },
   feedAction: { marginTop: 14 },
   feedActionText: { fontSize: 14, color: '#AFC8E8', fontWeight: '500' },
+
+  // Realized PnL
+  realizedHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+  },
+  realizedToggle: { fontSize: 12, color: '#AAAAAA' },
+  realizedGain: { fontSize: 26, fontWeight: '600', color: '#86A874', marginBottom: 4 },
+  realizedLoss: { fontSize: 26, fontWeight: '600', color: '#D68E8E', marginBottom: 4 },
+  realizedMeta: { fontSize: 13, color: '#AAAAAA' },
+  realizedList: {
+    borderTopWidth: 1,
+    borderTopColor: '#F4F1ED',
+    marginTop: 14,
+    paddingTop: 12,
+    backgroundColor: 'transparent',
+  },
+  realizedRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 10,
+    backgroundColor: 'transparent',
+  },
+  realizedRowLeft: { flex: 1, backgroundColor: 'transparent' },
+  realizedName: { fontSize: 14, fontWeight: '500', color: '#333333' },
+  realizedDetail: { fontSize: 12, color: '#AAAAAA', marginTop: 2 },
+  realizedItemGain: { fontSize: 14, fontWeight: '500', color: '#86A874' },
+  realizedItemLoss: { fontSize: 14, fontWeight: '500', color: '#D68E8E' },
 
   // (reserved for future memory / journal cards)
 

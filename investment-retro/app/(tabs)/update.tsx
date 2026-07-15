@@ -23,6 +23,10 @@ import {
   runPortfolioOcr,
   uploadImageToS3,
 } from '@/services/api';
+import {
+  confirmSellPrice,
+  skipSellPrice,
+} from '@/services/sellPriceStore';
 
 type SelectedImage = {
   uri: string;
@@ -99,6 +103,11 @@ export default function UpdatePortfolioScreen() {
   const [busy, setBusy] = useState(false);
   const [busyMessage, setBusyMessage] = useState('');
   const [error, setError] = useState<string | null>(null);
+
+  // 賣出確認狀態：key = symbol, value = { confirmed, sellPrice }
+  const [sellConfirmations, setSellConfirmations] = useState<
+    Record<string, { status: 'pending' | 'confirmed' | 'skipped' | 'not_sold' | 'price_done'; sellPrice: string }>
+  >({});
 
   const parsedHoldings = useMemo(
     () => holdings.map(toPortfolioHolding),
@@ -199,6 +208,7 @@ export default function UpdatePortfolioScreen() {
     setError(null);
     setBusy(false);
     setBusyMessage('');
+    setSellConfirmations({});
   };
 
   const pickImage = async () => {
@@ -333,8 +343,44 @@ export default function UpdatePortfolioScreen() {
       return;
     }
 
+    // 初始化賣出確認狀態（只針對消失或減少的股票）
+    const currentBySymbol = new Set(
+      parsedHoldings.map((h) => h.symbol.toUpperCase())
+    );
+    const newConfirmations: typeof sellConfirmations = {};
+    for (const prev of latest?.holdings ?? []) {
+      if (!currentBySymbol.has(prev.symbol.toUpperCase()) && prev.shares > 0) {
+        // 完全消失 → 可能是全部賣出
+        newConfirmations[prev.symbol] = { status: 'pending', sellPrice: '' };
+      }
+    }
+    setSellConfirmations(newConfirmations);
+
     setError(null);
     setStep(2);
+  };
+
+  const handleStep2Next = async () => {
+    // 儲存所有確認的賣出價格
+    // yearMonth 用「新快照的月份」，因為 useRealizedPnL 偵測賣出時用的是新期的 yearMonth
+    const yearMonth = new Date().toISOString().slice(0, 7);
+
+    for (const [symbol, conf] of Object.entries(sellConfirmations)) {
+      if (conf.status === 'confirmed' || conf.status === 'price_done') {
+        const price = parseFloat(conf.sellPrice);
+        if (!isNaN(price) && price > 0) {
+          const prev = latest?.holdings.find((h) => h.symbol === symbol);
+          const soldShares = prev?.shares ?? 0;
+          await confirmSellPrice(symbol, yearMonth, price, soldShares);
+        }
+      } else if (conf.status === 'skipped' || conf.status === 'not_sold') {
+        const prev = latest?.holdings.find((h) => h.symbol === symbol);
+        const soldShares = prev?.shares ?? 0;
+        await skipSellPrice(symbol, yearMonth, soldShares);
+      }
+    }
+
+    setStep(3);
   };
 
   const savePortfolio = async () => {
@@ -569,12 +615,110 @@ export default function UpdatePortfolioScreen() {
           {comparison.decreased.length > 0 ? (
             <View style={styles.changeCard}>
               <Text style={styles.changeLabelNeg}>📉 減少或移除</Text>
-              {comparison.decreased.map((item) => (
-                <Text key={`down-${item.symbol}`} style={styles.changeItem}>
-                  {item.name}：{item.previousShares.toLocaleString()} →{' '}
-                  {item.currentShares.toLocaleString()} 股
-                </Text>
-              ))}
+              {comparison.decreased.map((item) => {
+                const isSold = item.currentShares === 0;
+                const conf = sellConfirmations[item.symbol];
+
+                return (
+                  <View key={`down-${item.symbol}`} style={styles.sellItem}>
+                    <Text style={styles.changeItem}>
+                      {item.name}：{item.previousShares.toLocaleString()} →{' '}
+                      {item.currentShares.toLocaleString()} 股
+                    </Text>
+
+                    {isSold && conf ? (
+                      <View style={styles.sellConfirmArea}>
+                        {conf.status === 'pending' ? (
+                          <>
+                            <Text style={styles.sellQuestion}>
+                              是否已經賣出 {item.name}？
+                            </Text>
+                            <View style={styles.sellBtnRow}>
+                              <TouchableOpacity
+                                style={styles.sellBtnYes}
+                                onPress={() =>
+                                  setSellConfirmations((prev) => ({
+                                    ...prev,
+                                    [item.symbol]: { ...prev[item.symbol], status: 'confirmed' },
+                                  }))
+                                }
+                              >
+                                <Text style={styles.sellBtnYesText}>是，已賣出</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={styles.sellBtnNo}
+                                onPress={() =>
+                                  setSellConfirmations((prev) => ({
+                                    ...prev,
+                                    [item.symbol]: { ...prev[item.symbol], status: 'not_sold' },
+                                  }))
+                                }
+                              >
+                                <Text style={styles.sellBtnNoText}>不是</Text>
+                              </TouchableOpacity>
+                            </View>
+                          </>
+                        ) : conf.status === 'confirmed' ? (
+                          <>
+                            <Text style={styles.sellQuestion}>賣出均價（NT$）</Text>
+                            <View style={styles.sellPriceRow}>
+                              <TextInput
+                                style={styles.sellPriceInput}
+                                value={conf.sellPrice}
+                                onChangeText={(value) =>
+                                  setSellConfirmations((prev) => ({
+                                    ...prev,
+                                    [item.symbol]: { ...prev[item.symbol], sellPrice: value },
+                                  }))
+                                }
+                                keyboardType="decimal-pad"
+                                placeholder="例如 150.5"
+                                placeholderTextColor="#CCCCCC"
+                              />
+                              <TouchableOpacity
+                                style={[
+                                  styles.sellConfirmBtn,
+                                  !conf.sellPrice.trim() && styles.sellConfirmBtnDisabled,
+                                ]}
+                                disabled={!conf.sellPrice.trim()}
+                                onPress={() =>
+                                  setSellConfirmations((prev) => ({
+                                    ...prev,
+                                    [item.symbol]: { ...prev[item.symbol], status: 'price_done' },
+                                  }))
+                                }
+                              >
+                                <Text style={styles.sellConfirmBtnText}>確認</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={styles.sellSkipBtn}
+                                onPress={() =>
+                                  setSellConfirmations((prev) => ({
+                                    ...prev,
+                                    [item.symbol]: { ...prev[item.symbol], status: 'skipped', sellPrice: '' },
+                                  }))
+                                }
+                              >
+                                <Text style={styles.sellSkipText}>跳過</Text>
+                              </TouchableOpacity>
+                            </View>
+                          </>
+                        ) : conf.status === 'price_done' ? (
+                          <Text style={styles.sellDone}>
+                            ✅ 已確認賣出，均價 NT${conf.sellPrice}
+                          </Text>
+                        ) : conf.status === 'not_sold' ? (
+                          <Text style={styles.sellDone}>
+                            ✅ 已標記為未賣出（可能是轉帳或截圖遺漏）
+                          </Text>
+                        ) : (
+                          <Text style={styles.sellDone}>✅ 已跳過，不計入損益</Text>
+                        )}
+                      </View>
+                    ) : null}
+                  </View>
+                );
+              })}
             </View>
           ) : null}
 
@@ -609,7 +753,7 @@ export default function UpdatePortfolioScreen() {
             <TouchableOpacity style={styles.secondaryBtn} onPress={() => setStep(1)}>
               <Text style={styles.secondaryBtnText}>上一步</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.primaryBtn} onPress={() => setStep(3)}>
+            <TouchableOpacity style={styles.primaryBtn} onPress={handleStep2Next}>
               <Text style={styles.primaryBtnText}>下一步</Text>
             </TouchableOpacity>
           </View>
@@ -831,4 +975,81 @@ const styles = StyleSheet.create({
   notePreviewText: { fontSize: 15, color: '#555555', fontStyle: 'italic', textAlign: 'center' },
   resetButton: { paddingVertical: 16 },
   resetButtonText: { color: '#777777', fontSize: 14 },
+  sellItem: {
+    marginTop: 8,
+    backgroundColor: 'transparent',
+  },
+  sellConfirmArea: {
+    backgroundColor: '#F9F8F6',
+    borderRadius: 12,
+    padding: 14,
+    marginTop: 8,
+  },
+  sellQuestion: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#444444',
+    marginBottom: 10,
+  },
+  sellBtnRow: {
+    flexDirection: 'row',
+    gap: 10,
+    backgroundColor: 'transparent',
+  },
+  sellBtnYes: {
+    flex: 1,
+    backgroundColor: '#222222',
+    borderRadius: 999,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  sellBtnYesText: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' },
+  sellBtnNo: {
+    flex: 1,
+    backgroundColor: '#F4F1ED',
+    borderRadius: 999,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  sellBtnNoText: { color: '#888888', fontSize: 14, fontWeight: '500' },
+  sellPriceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: 'transparent',
+  },
+  sellPriceInput: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#222222',
+    borderWidth: 1,
+    borderColor: '#EEEEEE',
+  },
+  sellSkipBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#F4F1ED',
+    borderRadius: 999,
+  },
+  sellSkipText: { color: '#888888', fontSize: 14 },
+  sellConfirmBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#222222',
+    borderRadius: 999,
+  },
+  sellConfirmBtnDisabled: {
+    backgroundColor: '#CCCCCC',
+  },
+  sellConfirmBtnText: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' },
+  sellDone: {
+    fontSize: 13,
+    color: '#86A874',
+    marginTop: 4,
+  },
 });

@@ -1,21 +1,31 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
-import { APP_TODAY_ISO } from '@/config/appDate';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
+import { useAuth } from '@/context/AuthContext';
+import {
+  listGoals,
+  createGoalApi,
+  updateGoalApi,
+  deleteGoalApi,
+  type GoalData,
+} from '@/services/api';
 
-export type Goal = {
-  id: string;
-  icon: string;
-  name: string;
-  targetAmount: number;
-  description?: string;
-  completed: boolean;
-  createdAt: string;
-};
+export type Goal = GoalData;
 
 type GoalContextType = {
   goals: Goal[];
-  addGoal: (goal: Omit<Goal, 'id' | 'completed' | 'createdAt'>) => void;
-  completeGoal: (id: string) => void;
-  deleteGoal: (id: string) => void;
+  loading: boolean;
+  error: string | null;
+  addGoal: (goal: { icon: string; name: string; targetAmount: number; description?: string; imageKey?: string | null }) => Promise<void>;
+  updateGoal: (id: string, updates: Partial<{ icon: string; name: string; targetAmount: number; description: string; completed: boolean; imageKey: string | null; achievementImageKey: string | null }>) => Promise<void>;
+  completeGoal: (id: string) => Promise<void>;
+  deleteGoal: (id: string) => Promise<void>;
+  refreshGoals: () => Promise<void>;
   activeGoals: Goal[];
   completedGoals: Goal[];
   totalTarget: number;
@@ -26,79 +36,107 @@ type GoalContextType = {
 const GoalContext = createContext<GoalContextType | undefined>(undefined);
 
 export function GoalProvider({ children }: { children: React.ReactNode }) {
-  const [goals, setGoals] = useState<Goal[]>([
-    {
-      id: '1',
-      icon: '✈️',
-      name: '東京旅行',
-      targetAmount: 200000,
-      description: '和朋友一起去東京玩兩週',
-      completed: false,
-      createdAt: '2025-12-01',
+  const { isAuthenticated, getAccessToken } = useAuth();
+  const [goals, setGoals] = useState<Goal[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchGoals = useCallback(async () => {
+    if (!isAuthenticated) {
+      setGoals([]);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const token = await getAccessToken();
+      const result = await listGoals(token);
+      setGoals(result.goals);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '無法載入目標。');
+    } finally {
+      setLoading(false);
+    }
+  }, [isAuthenticated, getAccessToken]);
+
+  useEffect(() => {
+    fetchGoals();
+  }, [fetchGoals]);
+
+  const addGoal = useCallback(
+    async (goal: { icon: string; name: string; targetAmount: number; description?: string; imageKey?: string | null }) => {
+      const token = await getAccessToken();
+      const result = await createGoalApi(token, goal);
+      setGoals((prev) => [...prev, result.goal]);
     },
-    {
-      id: '2',
-      icon: '💻',
-      name: 'MacBook Pro',
-      targetAmount: 65000,
-      description: '',
-      completed: false,
-      createdAt: '2025-10-15',
+    [getAccessToken]
+  );
+
+  const updateGoal = useCallback(
+    async (
+      id: string,
+      updates: Partial<{ icon: string; name: string; targetAmount: number; description: string; completed: boolean; imageKey: string | null; achievementImageKey: string | null }>
+    ) => {
+      const token = await getAccessToken();
+      await updateGoalApi(token, id, updates);
+      setGoals((prev) =>
+        prev.map((g) => (g.id === id ? { ...g, ...updates } : g))
+      );
     },
-    {
-      id: '3',
-      icon: '🏠',
-      name: '買房頭期款',
-      targetAmount: 2000000,
-      description: '在台北買一間小公寓',
-      completed: false,
-      createdAt: '2025-06-01',
+    [getAccessToken]
+  );
+
+  const completeGoal = useCallback(
+    async (id: string) => {
+      await updateGoal(id, { completed: true });
     },
-  ]);
+    [updateGoal]
+  );
 
-  const addGoal = useCallback((goal: Omit<Goal, 'id' | 'completed' | 'createdAt'>) => {
-    const newGoal: Goal = {
-      ...goal,
-      id: Date.now().toString(),
-      completed: false,
-      createdAt: APP_TODAY_ISO,
-    };
-    setGoals((prev) => [...prev, newGoal]);
-  }, []);
+  const deleteGoal = useCallback(
+    async (id: string) => {
+      const token = await getAccessToken();
+      await deleteGoalApi(token, id);
+      setGoals((prev) => prev.filter((g) => g.id !== id));
+    },
+    [getAccessToken]
+  );
 
-  const completeGoal = useCallback((id: string) => {
-    setGoals((prev) =>
-      prev.map((g) => (g.id === id ? { ...g, completed: true } : g))
-    );
-  }, []);
+  const refreshGoals = useCallback(async () => {
+    await fetchGoals();
+  }, [fetchGoals]);
 
-  const deleteGoal = useCallback((id: string) => {
-    setGoals((prev) => prev.filter((g) => g.id !== id));
-  }, []);
-
-  const activeGoals = goals.filter((g) => !g.completed);
-  const completedGoals = goals.filter((g) => g.completed);
-  const totalTarget = activeGoals.reduce((sum, g) => sum + g.targetAmount, 0);
+  const activeGoals = useMemo(() => goals.filter((g) => !g.completed), [goals]);
+  const completedGoals = useMemo(() => goals.filter((g) => g.completed), [goals]);
+  const totalTarget = useMemo(
+    () => activeGoals.reduce((sum, g) => sum + g.targetAmount, 0),
+    [activeGoals]
+  );
   const goalCount = goals.length;
   const completedCount = completedGoals.length;
 
-  return (
-    <GoalContext.Provider
-      value={{
-        goals,
-        addGoal,
-        completeGoal,
-        deleteGoal,
-        activeGoals,
-        completedGoals,
-        totalTarget,
-        goalCount,
-        completedCount,
-      }}
-    >
-      {children}
-    </GoalContext.Provider>
+  const value = useMemo(
+    () => ({
+      goals,
+      loading,
+      error,
+      addGoal,
+      updateGoal,
+      completeGoal,
+      deleteGoal,
+      refreshGoals,
+      activeGoals,
+      completedGoals,
+      totalTarget,
+      goalCount,
+      completedCount,
+    }),
+    [goals, loading, error, addGoal, updateGoal, completeGoal, deleteGoal, refreshGoals, activeGoals, completedGoals, totalTarget, goalCount, completedCount]
   );
+
+  return <GoalContext.Provider value={value}>{children}</GoalContext.Provider>;
 }
 
 export function useGoals() {

@@ -329,3 +329,67 @@ export async function generateJournal(
 
   throw new ApiError(500, '月報生成失敗，請稍後再試');
 }
+
+// === Goals API ===
+
+export type GoalData = {
+  id: string;
+  icon: string;
+  name: string;
+  targetAmount: number;
+  description: string;
+  completed: boolean;
+  createdAt: string;
+  /** S3 key for the goal's inspiration/target photo */
+  imageKey?: string | null;
+  /** S3 key for the achievement photo (uploaded when goal is completed) */
+  achievementImageKey?: string | null;
+};
+
+export async function listGoals(
+  accessToken: string
+): Promise<{ goals: GoalData[] }> {
+  return apiRequest('/goals', accessToken);
+}
+
+export async function createGoalApi(
+  accessToken: string,
+  input: { icon: string; name: string; targetAmount: number; description?: string; imageKey?: string | null }
+): Promise<{ message: string; goal: GoalData }> {
+  return apiRequest('/goals', accessToken, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateGoalApi(
+  accessToken: string,
+  goalId: string,
+  input: Partial<{ icon: string; name: string; targetAmount: number; description: string; completed: boolean; imageKey: string | null; achievementImageKey: string | null }>
+): Promise<{ message: string }> {
+  return apiRequest(`/goals/${goalId}`, accessToken, {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteGoalApi(
+  accessToken: string,
+  goalId: string
+): Promise<{ message: string }> {
+  return apiRequest(`/goals/${goalId}`, accessToken, {
+    method: 'DELETE',
+  });
+}
+
+// === Image URL ===
+
+export async function getImageReadUrl(key: string): Promise<string> {
+  const query = new URLSearchParams({ key });
+  const response = await fetch(`${APP_CONFIG.apiBaseUrl}/image-url?${query.toString()}`);
+  if (!response.ok) {
+    throw new ApiError(response.status, '無法取得圖片連結。');
+  }
+  const data = await response.json();
+  return data.url;
+}

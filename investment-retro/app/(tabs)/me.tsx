@@ -1,17 +1,255 @@
-import { StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Image,
+  Modal,
+  StyleSheet,
+  ScrollView,
+  TextInput,
+  TouchableOpacity,
+} from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { Text, View } from '@/components/Themed';
 import { useRouter } from 'expo-router';
-import { useGoals } from '@/context/GoalContext';
+import { useGoals, type Goal } from '@/context/GoalContext';
 import { useAuth } from '@/context/AuthContext';
 import { usePortfolio } from '@/context/PortfolioContext';
-import { usePortfolioHistory } from '@/context/PortfolioHistoryContext';
+import { usePortfolioPnL } from '@/hooks/usePortfolioPnL';
+import { useRealizedPnL } from '@/hooks/useRealizedPnL';
+import {
+  getPortfolioUploadUrl,
+  getImageReadUrl,
+  uploadImageToS3,
+} from '@/services/api';
+
+/** Cached presigned URLs for goal images */
+const imageUrlCache: Record<string, string> = {};
+
+/** Build a displayable URL from an S3 key (async, uses presigned URL) */
+function useImageUrls(keys: (string | null | undefined)[]): Record<string, string> {
+  const [urls, setUrls] = useState<Record<string, string>>({});
+
+  const validKeys = keys.filter((k): k is string => !!k);
+
+  React.useEffect(() => {
+    if (validKeys.length === 0) return;
+
+    const toFetch = validKeys.filter((k) => !imageUrlCache[k]);
+    if (toFetch.length === 0) {
+      // All already cached, just make sure state reflects it
+      const cached: Record<string, string> = {};
+      for (const k of validKeys) {
+        if (imageUrlCache[k]) cached[k] = imageUrlCache[k];
+      }
+      setUrls(cached);
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      const results = await Promise.all(
+        toFetch.map(async (key) => {
+          try {
+            const url = await getImageReadUrl(key);
+            return { key, url };
+          } catch {
+            return { key, url: '' };
+          }
+        })
+      );
+
+      if (cancelled) return;
+
+      const newUrls: Record<string, string> = {};
+      for (const { key, url } of results) {
+        if (url) {
+          imageUrlCache[key] = url;
+          newUrls[key] = url;
+        }
+      }
+
+      // Merge with any already-cached ones
+      const all: Record<string, string> = {};
+      for (const k of validKeys) {
+        if (imageUrlCache[k]) all[k] = imageUrlCache[k];
+      }
+      setUrls(all);
+    })();
+
+    return () => { cancelled = true; };
+  }, [validKeys.join('|')]);
+
+  return urls;
+}
 
 export default function MeScreen() {
   const router = useRouter();
-  const { activeGoals, completedGoals, completedCount } = useGoals();
-  const { session, signOut } = useAuth();
+  const { activeGoals, completedGoals, completedCount, updateGoal, deleteGoal } = useGoals();
+  const { session, signOut, getAccessToken } = useAuth();
   const { latest } = usePortfolio();
+  const pnl = usePortfolioPnL();
+  const realized = useRealizedPnL();
   const displayName = session?.username?.split('@')[0] || 'Investor';
+
+  // Resolve presigned URLs for all goal images
+  const allImageKeys = [
+    ...activeGoals.map((g) => g.imageKey),
+    ...completedGoals.map((g) => g.achievementImageKey),
+    ...completedGoals.map((g) => g.imageKey),
+  ];
+  const resolvedImages = useImageUrls(allImageKeys);
+
+  // Edit modal state
+  const [editGoal, setEditGoal] = useState<Goal | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editAmount, setEditAmount] = useState('');
+  const [editDesc, setEditDesc] = useState('');
+  const [editImageUri, setEditImageUri] = useState<string | null>(null);
+  const [editImageChanged, setEditImageChanged] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  // Achievement photo modal
+  const [achieveGoal, setAchieveGoal] = useState<Goal | null>(null);
+  const [achieveImageUri, setAchieveImageUri] = useState<string | null>(null);
+  const [achieveSaving, setAchieveSaving] = useState(false);
+
+  // Progress calculation: use profit (unrealized PnL + realized PnL)
+  const totalProfit =
+    (pnl.unrealizedPnL ?? 0) + (realized.totalRealizedPnL ?? 0);
+
+  const openEdit = (goal: Goal) => {
+    setEditGoal(goal);
+    setEditName(goal.name);
+    setEditAmount(String(goal.targetAmount));
+    setEditDesc(goal.description || '');
+    setEditImageUri(null);
+    setEditImageChanged(false);
+  };
+
+  const pickEditImage = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) return;
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [16, 9],
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets?.[0]) {
+      const asset = result.assets[0];
+      const actions = asset.width > 1200 ? [{ resize: { width: 1200 } }] : [];
+      const normalized = await manipulateAsync(asset.uri, actions, {
+        compress: 0.8,
+        format: SaveFormat.JPEG,
+      });
+      setEditImageUri(normalized.uri);
+      setEditImageChanged(true);
+    }
+  };
+
+  const saveEdit = async () => {
+    if (!editGoal) return;
+    setSaving(true);
+
+    try {
+      let imageKey = editGoal.imageKey ?? null;
+
+      if (editImageChanged && editImageUri) {
+        const token = await getAccessToken();
+        const fileName = `goal-${editGoal.id}-${Date.now()}.jpg`;
+        const upload = await getPortfolioUploadUrl(token, fileName, 'image/jpeg');
+        await uploadImageToS3(upload, editImageUri, 'image/jpeg');
+        imageKey = upload.key;
+      }
+
+      await updateGoal(editGoal.id, {
+        name: editName,
+        targetAmount: parseInt(editAmount) || 0,
+        description: editDesc,
+        ...(editImageChanged ? { imageKey } : {}),
+      });
+      setEditGoal(null);
+    } catch {
+      // silent
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = (goal: Goal) => {
+    Alert.alert(
+      '刪除目標',
+      `確定要刪除「${goal.name}」嗎？`,
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '刪除',
+          style: 'destructive',
+          onPress: () => deleteGoal(goal.id),
+        },
+      ]
+    );
+  };
+
+  // Complete goal flow: ask for achievement photo
+  const startComplete = (goal: Goal) => {
+    setAchieveGoal(goal);
+    setAchieveImageUri(null);
+  };
+
+  const pickAchieveImage = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) return;
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets?.[0]) {
+      const asset = result.assets[0];
+      const actions = asset.width > 1200 ? [{ resize: { width: 1200 } }] : [];
+      const normalized = await manipulateAsync(asset.uri, actions, {
+        compress: 0.8,
+        format: SaveFormat.JPEG,
+      });
+      setAchieveImageUri(normalized.uri);
+    }
+  };
+
+  const confirmComplete = async () => {
+    if (!achieveGoal) return;
+    setAchieveSaving(true);
+
+    try {
+      let achievementImageKey: string | null = null;
+
+      if (achieveImageUri) {
+        const token = await getAccessToken();
+        const fileName = `goal-achieve-${achieveGoal.id}-${Date.now()}.jpg`;
+        const upload = await getPortfolioUploadUrl(token, fileName, 'image/jpeg');
+        await uploadImageToS3(upload, achieveImageUri, 'image/jpeg');
+        achievementImageKey = upload.key;
+      }
+
+      await updateGoal(achieveGoal.id, {
+        completed: true,
+        ...(achievementImageKey ? { achievementImageKey } : {}),
+      });
+      setAchieveGoal(null);
+    } catch {
+      // silent
+    } finally {
+      setAchieveSaving(false);
+    }
+  };
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
@@ -28,8 +266,8 @@ export default function MeScreen() {
         </View>
         <View style={styles.statDivider} />
         <View style={styles.statItem}>
-          <Text style={styles.statNumber}>24</Text>
-          <Text style={styles.statLabel}>篇月誌</Text>
+          <Text style={styles.statNumber}>{activeGoals.length}</Text>
+          <Text style={styles.statLabel}>進行中目標</Text>
         </View>
         <View style={styles.statDivider} />
         <View style={styles.statItem}>
@@ -51,61 +289,217 @@ export default function MeScreen() {
           <Text style={styles.emptyText}>還沒有目標，建立一個吧！</Text>
         )}
 
-        {activeGoals.map((goal, i) => (
-          <View
-            key={goal.id}
-            style={i === activeGoals.length - 1 ? styles.goalItemLast : styles.goalItem}
-          >
-            <View style={styles.goalLeft}>
-              <Text style={styles.goalIcon}>{goal.icon}</Text>
-              <View style={styles.goalInfo}>
-                <Text style={styles.goalName}>{goal.name}</Text>
-                <Text style={styles.goalAmount}>
-                  NT${goal.targetAmount.toLocaleString()}
-                </Text>
+        {activeGoals.map((goal, i) => {
+          const progress = goal.targetAmount > 0
+            ? Math.min((totalProfit / goal.targetAmount) * 100, 100)
+            : 0;
+          const goalImg = goal.imageKey ? resolvedImages[goal.imageKey] : null;
+
+          return (
+            <View
+              key={goal.id}
+              style={i === activeGoals.length - 1 ? styles.goalItemLast : styles.goalItem}
+            >
+              <TouchableOpacity
+                style={styles.goalContent}
+                activeOpacity={0.7}
+                onPress={() => openEdit(goal)}
+              >
+                {goalImg ? (
+                  <Image source={{ uri: goalImg }} style={styles.goalThumb} />
+                ) : null}
+                <View style={styles.goalInfo}>
+                  <Text style={styles.goalName}>{goal.name}</Text>
+                  <Text style={styles.goalAmount}>
+                    NT${goal.targetAmount.toLocaleString()}
+                  </Text>
+                  <View style={styles.progressBar}>
+                    <View
+                      style={[
+                        styles.progressFill,
+                        { width: `${Math.max(progress, 0)}%` },
+                        progress >= 100 ? styles.progressComplete : null,
+                      ]}
+                    />
+                  </View>
+                  <Text style={styles.progressText}>
+                    {progress >= 100
+                      ? '🎉 已達標！'
+                      : `獲利進度 ${progress.toFixed(0)}%（NT$${totalProfit.toLocaleString('zh-TW')}）`}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+
+              <View style={styles.goalActions}>
+                {progress >= 100 && (
+                  <TouchableOpacity
+                    style={styles.completeBtn}
+                    onPress={() => startComplete(goal)}
+                  >
+                    <Text style={styles.completeBtnText}>達成</Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity
+                  style={styles.deleteBtn}
+                  onPress={() => handleDelete(goal)}
+                >
+                  <Text style={styles.deleteBtnText}>✕</Text>
+                </TouchableOpacity>
               </View>
             </View>
-          </View>
-        ))}
+          );
+        })}
       </View>
 
       {/* Completed Goals */}
       {completedGoals.length > 0 && (
         <View style={styles.card}>
           <Text style={styles.cardLabel}>已完成的目標 🎉</Text>
-          {completedGoals.map((goal) => (
-            <View key={goal.id} style={styles.completedItem}>
-              <Text style={styles.goalIcon}>{goal.icon}</Text>
-              <Text style={styles.completedName}>{goal.name}</Text>
-            </View>
-          ))}
+          {completedGoals.map((goal) => {
+            const achImg = goal.achievementImageKey ? resolvedImages[goal.achievementImageKey] : null;
+            return (
+              <View key={goal.id} style={styles.completedItem}>
+                {achImg ? (
+                  <Image source={{ uri: achImg }} style={styles.completedThumb} />
+                ) : null}
+                <Text style={styles.completedName}>{goal.name}</Text>
+              </View>
+            );
+          })}
         </View>
       )}
-
-      {/* Achievements */}
-      <View style={styles.card}>
-        <Text style={styles.cardLabel}>成就</Text>
-        <Text style={styles.achievement}>🎉 第一筆投資</Text>
-        <Text style={styles.achievement}>💰 第一筆股息</Text>
-        <Text style={styles.achievement}>📅 連續投資 12 個月</Text>
-        {completedCount > 0 && (
-          <Text style={styles.achievement}>🎯 完成 {completedCount} 個目標</Text>
-        )}
-      </View>
 
       {/* Settings */}
       <View style={styles.card}>
         <Text style={styles.cardLabel}>設定</Text>
-        <Text style={styles.settingItem}>帳號設定</Text>
-        <Text style={styles.settingItem}>通知設定</Text>
-        <Text style={styles.settingItem}>資料匯出</Text>
-        <Text style={styles.settingItem}>隱私設定</Text>
         <TouchableOpacity style={styles.signOutButton} onPress={signOut}>
           <Text style={styles.signOutText}>登出</Text>
         </TouchableOpacity>
       </View>
 
       <View style={styles.bottomPadding} />
+
+      {/* Edit Goal Modal */}
+      <Modal visible={editGoal !== null} transparent animationType="fade">
+        <ScrollView contentContainerStyle={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>編輯目標</Text>
+
+            <Text style={styles.modalLabel}>目標照片</Text>
+            {editImageUri || editGoal?.imageKey ? (
+              <View style={styles.modalImagePreview}>
+                <Image
+                  source={{ uri: editImageUri || (editGoal?.imageKey ? resolvedImages[editGoal.imageKey] : '') || '' }}
+                  style={styles.modalPreviewImg}
+                />
+                <TouchableOpacity style={styles.modalChangeImg} onPress={pickEditImage}>
+                  <Text style={styles.modalChangeImgText}>更換</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity style={styles.modalImagePicker} onPress={pickEditImage}>
+                <Text style={styles.modalImagePickerText}>📷 選擇照片</Text>
+              </TouchableOpacity>
+            )}
+
+            <Text style={styles.modalLabel}>名稱</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={editName}
+              onChangeText={setEditName}
+              placeholder="目標名稱"
+              placeholderTextColor="#CCCCCC"
+            />
+
+            <Text style={styles.modalLabel}>金額</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={editAmount}
+              onChangeText={setEditAmount}
+              keyboardType="numeric"
+              placeholder="目標金額"
+              placeholderTextColor="#CCCCCC"
+            />
+
+            <Text style={styles.modalLabel}>描述</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={editDesc}
+              onChangeText={setEditDesc}
+              placeholder="描述（選填）"
+              placeholderTextColor="#CCCCCC"
+            />
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                onPress={() => setEditGoal(null)}
+              >
+                <Text style={styles.modalCancelText}>取消</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalSaveBtn, saving && styles.modalSaveBtnDisabled]}
+                onPress={saveEdit}
+                disabled={saving}
+              >
+                {saving ? (
+                  <ActivityIndicator color="#FFFFFF" size="small" />
+                ) : (
+                  <Text style={styles.modalSaveText}>儲存</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </ScrollView>
+      </Modal>
+
+      {/* Achievement Photo Modal */}
+      <Modal visible={achieveGoal !== null} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>🎉 恭喜達成目標！</Text>
+            <Text style={styles.achieveDesc}>
+              上傳一張達成照片紀念這個時刻吧！
+            </Text>
+
+            {achieveImageUri ? (
+              <View style={styles.modalImagePreview}>
+                <Image source={{ uri: achieveImageUri }} style={styles.modalPreviewImg} />
+                <TouchableOpacity style={styles.modalChangeImg} onPress={pickAchieveImage}>
+                  <Text style={styles.modalChangeImgText}>更換</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity style={styles.modalImagePicker} onPress={pickAchieveImage}>
+                <Text style={styles.modalImagePickerText}>📷 選擇達成照片</Text>
+              </TouchableOpacity>
+            )}
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                onPress={() => {
+                  // Complete without photo
+                  confirmComplete();
+                }}
+              >
+                <Text style={styles.modalCancelText}>跳過</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalSaveBtn, achieveSaving && styles.modalSaveBtnDisabled]}
+                onPress={confirmComplete}
+                disabled={achieveSaving}
+              >
+                {achieveSaving ? (
+                  <ActivityIndicator color="#FFFFFF" size="small" />
+                ) : (
+                  <Text style={styles.modalSaveText}>完成</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -136,30 +530,97 @@ const styles = StyleSheet.create({
     marginBottom: 16, backgroundColor: 'transparent',
   },
   cardLabel: { fontSize: 13, color: '#888888', marginBottom: 16, letterSpacing: 0.5 },
-  addBtn: { fontSize: 14, color: '#AFC8E8', fontWeight: '500' },
+  addBtn: { fontSize: 14, color: '#86A874', fontWeight: '500' },
   emptyText: { fontSize: 15, color: '#BBBBBB', textAlign: 'center', paddingVertical: 12 },
   goalItem: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    flexDirection: 'row', alignItems: 'center',
     paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#F4F1ED',
     backgroundColor: 'transparent',
   },
   goalItemLast: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    flexDirection: 'row', alignItems: 'center',
     paddingVertical: 14, backgroundColor: 'transparent',
   },
-  goalLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: 'transparent', flex: 1 },
-  goalIcon: { fontSize: 22 },
-  goalInfo: { backgroundColor: 'transparent', flex: 1 },
+  goalContent: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    flex: 1, backgroundColor: 'transparent',
+  },
+  goalThumb: { width: 44, height: 44, borderRadius: 10 },
+  goalInfo: { flex: 1, backgroundColor: 'transparent' },
   goalName: { fontSize: 16, color: '#222222', fontWeight: '500' },
   goalAmount: { fontSize: 13, color: '#BBBBBB', marginTop: 2 },
+  progressBar: {
+    height: 4, borderRadius: 2, backgroundColor: '#F0EDE8',
+    marginTop: 8, overflow: 'hidden',
+  },
+  progressFill: { height: 4, borderRadius: 2, backgroundColor: '#86A874' },
+  progressComplete: { backgroundColor: '#6B9E5B' },
+  progressText: { fontSize: 11, color: '#AAAAAA', marginTop: 4 },
+  goalActions: {
+    flexDirection: 'column', alignItems: 'center', gap: 6,
+    marginLeft: 8, backgroundColor: 'transparent',
+  },
+  completeBtn: {
+    backgroundColor: '#86A874', borderRadius: 999,
+    paddingHorizontal: 10, paddingVertical: 5,
+  },
+  completeBtnText: { fontSize: 11, color: '#FFFFFF', fontWeight: '600' },
+  deleteBtn: {
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: '#F9F8F6', alignItems: 'center', justifyContent: 'center',
+  },
+  deleteBtnText: { fontSize: 14, color: '#CCCCCC' },
   completedItem: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     paddingVertical: 10, backgroundColor: 'transparent',
   },
+  completedThumb: { width: 36, height: 36, borderRadius: 8 },
   completedName: { fontSize: 15, color: '#BBBBBB', textDecorationLine: 'line-through' },
-  achievement: { fontSize: 15, color: '#555555', paddingVertical: 10 },
-  settingItem: { fontSize: 15, color: '#555555', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F4F1ED' },
-  signOutButton: { paddingTop: 18, alignItems: 'center' },
+  signOutButton: { paddingTop: 8, alignItems: 'center' },
   signOutText: { fontSize: 15, color: '#C47777', fontWeight: '500' },
   bottomPadding: { height: 40, backgroundColor: 'transparent' },
+
+  // Modal shared
+  modalOverlay: {
+    flexGrow: 1, backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center', alignItems: 'center', padding: 24,
+  },
+  modalCard: {
+    backgroundColor: '#FFFFFF', borderRadius: 24, padding: 28,
+    width: '100%', maxWidth: 360,
+  },
+  modalTitle: { fontSize: 20, fontWeight: '600', color: '#222222', marginBottom: 16 },
+  modalLabel: { fontSize: 13, color: '#888888', marginBottom: 6, marginTop: 14 },
+  modalInput: {
+    backgroundColor: '#F9F8F6', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12,
+    fontSize: 16, color: '#222222',
+  },
+  modalImagePicker: {
+    backgroundColor: '#F9F8F6', borderRadius: 12, padding: 20,
+    alignItems: 'center', borderWidth: 1, borderColor: '#F0EDE8', borderStyle: 'dashed',
+  },
+  modalImagePickerText: { fontSize: 14, color: '#AAAAAA' },
+  modalImagePreview: { borderRadius: 12, overflow: 'hidden' },
+  modalPreviewImg: { width: '100%', height: 140, borderRadius: 12 },
+  modalChangeImg: {
+    position: 'absolute', bottom: 8, right: 8,
+    backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 999,
+    paddingHorizontal: 12, paddingVertical: 6,
+  },
+  modalChangeImgText: { color: '#FFFFFF', fontSize: 11, fontWeight: '500' },
+  modalButtons: {
+    flexDirection: 'row', gap: 12, marginTop: 24, backgroundColor: 'transparent',
+  },
+  modalCancelBtn: {
+    flex: 1, paddingVertical: 14, borderRadius: 999,
+    alignItems: 'center', backgroundColor: '#F4F1ED',
+  },
+  modalCancelText: { fontSize: 15, color: '#888888', fontWeight: '500' },
+  modalSaveBtn: {
+    flex: 1, paddingVertical: 14, borderRadius: 999,
+    alignItems: 'center', backgroundColor: '#222222',
+  },
+  modalSaveBtnDisabled: { backgroundColor: '#CCCCCC' },
+  modalSaveText: { fontSize: 15, color: '#FFFFFF', fontWeight: '600' },
+  achieveDesc: { fontSize: 14, color: '#666666', marginBottom: 16 },
 });
