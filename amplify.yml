@@ -1,16 +1,18 @@
 version: 1
-frontend:
-  phases:
-    preBuild:
-      commands:
-        - cd investment-retro && npm ci
-    build:
-      commands:
-        - cd investment-retro && npm run build:web
-  artifacts:
-    baseDirectory: investment-retro/dist
-    files:
-      - '**/*'
-  cache:
-    paths:
-      - 'investment-retro/node_modules/**/*'
+applications:
+  - appRoot: investment-retro
+    frontend:
+      phases:
+        preBuild:
+          commands:
+            - npm ci
+        build:
+          commands:
+            - npm run build:web
+      artifacts:
+        baseDirectory: dist
+        files:
+          - '**/*'
+      cache:
+        paths:
+          - 'node_modules/**/*'
