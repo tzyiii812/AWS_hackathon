@@ -29,7 +29,7 @@ const homeImageUrlCache: Record<string, string> = {};
 
 export default function HomeScreen() {
   const router = useRouter();
-  const { session } = useAuth();
+  const { session, getAccessToken } = useAuth();
   const { activeGoals, totalTarget, completedCount } = useGoals();
   const { latest } = usePortfolio();
   const pnl = usePortfolioPnL();
@@ -58,12 +58,15 @@ export default function HomeScreen() {
     let cancelled = false;
 
     (async () => {
+      const token = await getAccessToken();
       const results = await Promise.all(
         toFetch.map(async (key) => {
           try {
-            const url = await getImageReadUrl(key);
+            const url = await getImageReadUrl(key, token);
+            console.log('[HomeScreen] Resolved image key:', key, '→ URL length:', url?.length ?? 0);
             return { key, url };
-          } catch {
+          } catch (err) {
+            console.warn('[HomeScreen] Failed to resolve image key:', key, err);
             return { key, url: '' };
           }
         })

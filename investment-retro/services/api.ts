@@ -384,7 +384,7 @@ export async function deleteGoalApi(
 
 // === Image URL ===
 
-export async function getImageReadUrl(key: string): Promise<string> {
+export async function getImageReadUrl(key: string, _accessToken?: string): Promise<string> {
   const query = new URLSearchParams({ key });
   const response = await fetch(`${APP_CONFIG.apiBaseUrl}/image-url?${query.toString()}`);
   if (!response.ok) {

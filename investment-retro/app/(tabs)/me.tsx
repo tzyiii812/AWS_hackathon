@@ -29,7 +29,7 @@ import {
 const imageUrlCache: Record<string, string> = {};
 
 /** Build a displayable URL from an S3 key (async, uses presigned URL) */
-function useImageUrls(keys: (string | null | undefined)[]): Record<string, string> {
+function useImageUrls(keys: (string | null | undefined)[], getToken: () => Promise<string>): Record<string, string> {
   const [urls, setUrls] = useState<Record<string, string>>({});
 
   const validKeys = keys.filter((k): k is string => !!k);
@@ -51,10 +51,11 @@ function useImageUrls(keys: (string | null | undefined)[]): Record<string, strin
     let cancelled = false;
 
     (async () => {
+      const token = await getToken();
       const results = await Promise.all(
         toFetch.map(async (key) => {
           try {
-            const url = await getImageReadUrl(key);
+            const url = await getImageReadUrl(key, token);
             console.log('[useImageUrls] Resolved key:', key, '→ URL length:', url.length);
             return { key, url };
           } catch (err) {
@@ -103,7 +104,7 @@ export default function MeScreen() {
     ...completedGoals.map((g) => g.achievementImageKey),
     ...completedGoals.map((g) => g.imageKey),
   ];
-  const resolvedImages = useImageUrls(allImageKeys);
+  const resolvedImages = useImageUrls(allImageKeys, getAccessToken);
 
   // Track images that failed to load
   const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
