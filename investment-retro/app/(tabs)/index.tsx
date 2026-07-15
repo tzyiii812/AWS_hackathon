@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
+  ImageBackground,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -12,6 +13,7 @@ import { useGoals } from '@/context/GoalContext';
 import { usePortfolio } from '@/context/PortfolioContext';
 import { usePortfolioPnL } from '@/hooks/usePortfolioPnL';
 import { useRealizedPnL } from '@/hooks/useRealizedPnL';
+import { getImageReadUrl } from '@/services/api';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_WIDTH = SCREEN_WIDTH - 40;
@@ -21,6 +23,9 @@ const PLACEHOLDER_TIPS = [
   { id: '1', icon: '💡', title: '試試問 AI', content: '上傳持股截圖後，AI 可以分析你的投資組合配置。' },
   { id: '2', icon: '📊', title: '持續追蹤', content: '定期更新持股，才能看到報酬趨勢和進度。' },
 ];
+
+/** Cached presigned URLs for goal images */
+const homeImageUrlCache: Record<string, string> = {};
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -32,9 +37,63 @@ export default function HomeScreen() {
   const portfolioValue = pnl.totalMarketValue;
   const [cardIndex, setCardIndex] = useState(0);
   const [realizedExpanded, setRealizedExpanded] = useState(false);
+  const [resolvedImages, setResolvedImages] = useState<Record<string, string>>({});
+
+  // Resolve presigned URLs for goal images
+  const imageKeys = activeGoals.map((g) => g.imageKey).filter((k): k is string => !!k);
+
+  useEffect(() => {
+    if (imageKeys.length === 0) return;
+
+    const toFetch = imageKeys.filter((k) => !homeImageUrlCache[k]);
+    if (toFetch.length === 0) {
+      const cached: Record<string, string> = {};
+      for (const k of imageKeys) {
+        if (homeImageUrlCache[k]) cached[k] = homeImageUrlCache[k];
+      }
+      setResolvedImages(cached);
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      const results = await Promise.all(
+        toFetch.map(async (key) => {
+          try {
+            const url = await getImageReadUrl(key);
+            return { key, url };
+          } catch {
+            return { key, url: '' };
+          }
+        })
+      );
+
+      if (cancelled) return;
+
+      for (const { key, url } of results) {
+        if (url) homeImageUrlCache[key] = url;
+      }
+
+      const all: Record<string, string> = {};
+      for (const k of imageKeys) {
+        if (homeImageUrlCache[k]) all[k] = homeImageUrlCache[k];
+      }
+      setResolvedImages(all);
+    })();
+
+    return () => { cancelled = true; };
+  }, [imageKeys.join('|')]);
 
   // 從 usePortfolioPnL hook 取得計算結果
   const { unrealizedPnL, returnRate } = pnl;
+
+  // Track images that failed to load
+  const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
+  const onImageError = (key: string) => {
+    console.warn('[HomeScreen] Image failed to load, key:', key);
+    setFailedImages((prev) => new Set(prev).add(key));
+  };
 
   // Total cards: 1 overview + N goals
   const totalCards = 1 + activeGoals.length;
@@ -69,23 +128,46 @@ export default function HomeScreen() {
       ? Math.min((profit / goal.targetAmount) * 100, 100)
       : 0;
 
-    return (
-      <View style={styles.goalCard}>
-        <Text style={styles.goalName}>{goal.name}</Text>
-        <Text style={styles.goalTarget}>
+    const goalImg = goal.imageKey && !failedImages.has(goal.imageKey) ? resolvedImages[goal.imageKey] : null;
+
+    const cardContent = (
+      <View style={styles.goalCardContent}>
+        <Text style={goalImg ? styles.goalNameLight : styles.goalName}>{goal.name}</Text>
+        <Text style={goalImg ? styles.goalTargetLight : styles.goalTarget}>
           NT${goal.targetAmount.toLocaleString()}
         </Text>
         {goal.description ? (
-          <Text style={styles.goalDesc}>{goal.description}</Text>
+          <Text style={goalImg ? styles.goalDescLight : styles.goalDesc}>{goal.description}</Text>
         ) : null}
-        <View style={styles.goalProgressBar}>
-          <View style={[styles.goalProgressFill, { width: `${Math.max(progress, 0)}%` }]} />
+        <View style={goalImg ? styles.goalProgressBarLight : styles.goalProgressBar}>
+          <View style={[goalImg ? styles.goalProgressFillLight : styles.goalProgressFill, { width: `${Math.max(progress, 0)}%` }]} />
         </View>
-        <Text style={styles.goalProgressText}>
+        <Text style={goalImg ? styles.goalProgressTextLight : styles.goalProgressText}>
           {progress >= 100
             ? '🎉 已達標！去「我」頁面完成目標'
             : `獲利進度 ${progress.toFixed(0)}%`}
         </Text>
+      </View>
+    );
+
+    if (goalImg) {
+      return (
+        <ImageBackground
+          source={{ uri: goalImg }}
+          style={styles.goalCardWithImage}
+          imageStyle={styles.goalCardImageStyle}
+          onError={() => goal.imageKey && onImageError(goal.imageKey)}
+        >
+          <View style={styles.goalCardImageOverlay}>
+            {cardContent}
+          </View>
+        </ImageBackground>
+      );
+    }
+
+    return (
+      <View style={styles.goalCard}>
+        {cardContent}
       </View>
     );
   };
@@ -281,6 +363,32 @@ const styles = StyleSheet.create({
     elevation: 2,
     justifyContent: 'center',
   },
+  goalCardWithImage: {
+    width: CARD_WIDTH,
+    height: CARD_HEIGHT,
+    borderRadius: 24,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    elevation: 2,
+  },
+  goalCardImageStyle: {
+    borderRadius: 24,
+  },
+  goalCardImageOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.40)',
+    borderRadius: 24,
+    padding: 28,
+    justifyContent: 'center',
+  },
+  goalCardContent: {
+    flex: 1,
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+  },
   arrowLeft: {
     position: 'absolute',
     left: -6,
@@ -325,14 +433,23 @@ const styles = StyleSheet.create({
   totalAmount: { fontSize: 32, fontWeight: '600', color: '#222222' },
   totalLabel: { fontSize: 14, color: '#888888', marginTop: 4 },
   goalName: { fontSize: 22, fontWeight: '600', color: '#222222', marginBottom: 6 },
+  goalNameLight: { fontSize: 22, fontWeight: '600', color: '#FFFFFF', marginBottom: 6 },
   goalTarget: { fontSize: 15, color: '#888888' },
+  goalTargetLight: { fontSize: 15, color: 'rgba(255,255,255,0.85)' },
   goalDesc: { fontSize: 13, color: '#BBBBBB', marginTop: 6 },
+  goalDescLight: { fontSize: 13, color: 'rgba(255,255,255,0.7)', marginTop: 6 },
   goalProgressBar: {
     height: 4, borderRadius: 2, backgroundColor: '#F0EDE8',
     marginTop: 14, overflow: 'hidden',
   },
+  goalProgressBarLight: {
+    height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.3)',
+    marginTop: 14, overflow: 'hidden',
+  },
   goalProgressFill: { height: 4, borderRadius: 2, backgroundColor: '#86A874' },
+  goalProgressFillLight: { height: 4, borderRadius: 2, backgroundColor: '#FFFFFF' },
   goalProgressText: { fontSize: 12, color: '#AAAAAA', marginTop: 6 },
+  goalProgressTextLight: { fontSize: 12, color: 'rgba(255,255,255,0.8)', marginTop: 6 },
 
   // Dots
   dotsContainer: {

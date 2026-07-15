@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  ImageBackground,
   Modal,
   StyleSheet,
   ScrollView,
@@ -54,8 +55,10 @@ function useImageUrls(keys: (string | null | undefined)[]): Record<string, strin
         toFetch.map(async (key) => {
           try {
             const url = await getImageReadUrl(key);
+            console.log('[useImageUrls] Resolved key:', key, '→ URL length:', url.length);
             return { key, url };
-          } catch {
+          } catch (err) {
+            console.warn('[useImageUrls] Failed to resolve key:', key, err);
             return { key, url: '' };
           }
         })
@@ -101,6 +104,13 @@ export default function MeScreen() {
     ...completedGoals.map((g) => g.imageKey),
   ];
   const resolvedImages = useImageUrls(allImageKeys);
+
+  // Track images that failed to load
+  const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
+  const onImageError = (key: string) => {
+    console.warn('[MeScreen] Image failed to load, key:', key);
+    setFailedImages((prev) => new Set(prev).add(key));
+  };
 
   // Edit modal state
   const [editGoal, setEditGoal] = useState<Goal | null>(null);
@@ -293,60 +303,78 @@ export default function MeScreen() {
           const progress = goal.targetAmount > 0
             ? Math.min((totalProfit / goal.targetAmount) * 100, 100)
             : 0;
-          const goalImg = goal.imageKey ? resolvedImages[goal.imageKey] : null;
+          const goalImgKey = goal.imageKey;
+          const goalImg = goalImgKey && !failedImages.has(goalImgKey) ? resolvedImages[goalImgKey] : null;
 
-          return (
-            <View
-              key={goal.id}
-              style={i === activeGoals.length - 1 ? styles.goalItemLast : styles.goalItem}
-            >
-              <TouchableOpacity
-                style={styles.goalContent}
-                activeOpacity={0.7}
-                onPress={() => openEdit(goal)}
-              >
-                {goalImg ? (
-                  <Image source={{ uri: goalImg }} style={styles.goalThumb} />
-                ) : null}
-                <View style={styles.goalInfo}>
-                  <Text style={styles.goalName}>{goal.name}</Text>
-                  <Text style={styles.goalAmount}>
+          const cardContent = (
+            <View style={styles.goalCardOverlay}>
+              <View style={styles.goalCardTop}>
+                <View style={styles.goalCardInfo}>
+                  <Text style={goalImg ? styles.goalNameLight : styles.goalName}>{goal.name}</Text>
+                  <Text style={goalImg ? styles.goalAmountLight : styles.goalAmount}>
                     NT${goal.targetAmount.toLocaleString()}
                   </Text>
-                  <View style={styles.progressBar}>
-                    <View
-                      style={[
-                        styles.progressFill,
-                        { width: `${Math.max(progress, 0)}%` },
-                        progress >= 100 ? styles.progressComplete : null,
-                      ]}
-                    />
-                  </View>
-                  <Text style={styles.progressText}>
-                    {progress >= 100
-                      ? '🎉 已達標！'
-                      : `獲利進度 ${progress.toFixed(0)}%（NT$${totalProfit.toLocaleString('zh-TW')}）`}
-                  </Text>
                 </View>
-              </TouchableOpacity>
-
-              <View style={styles.goalActions}>
-                {progress >= 100 && (
+                <View style={styles.goalActions}>
+                  {progress >= 100 && (
+                    <TouchableOpacity
+                      style={styles.completeBtn}
+                      onPress={() => startComplete(goal)}
+                    >
+                      <Text style={styles.completeBtnText}>達成</Text>
+                    </TouchableOpacity>
+                  )}
                   <TouchableOpacity
-                    style={styles.completeBtn}
-                    onPress={() => startComplete(goal)}
+                    style={goalImg ? styles.deleteBtnLight : styles.deleteBtn}
+                    onPress={() => handleDelete(goal)}
                   >
-                    <Text style={styles.completeBtnText}>達成</Text>
+                    <Text style={goalImg ? styles.deleteBtnTextLight : styles.deleteBtnText}>✕</Text>
                   </TouchableOpacity>
-                )}
-                <TouchableOpacity
-                  style={styles.deleteBtn}
-                  onPress={() => handleDelete(goal)}
-                >
-                  <Text style={styles.deleteBtnText}>✕</Text>
-                </TouchableOpacity>
+                </View>
+              </View>
+              <View style={styles.goalCardBottom}>
+                <View style={goalImg ? styles.progressBarLight : styles.progressBar}>
+                  <View
+                    style={[
+                      goalImg ? styles.progressFillLight : styles.progressFill,
+                      { width: `${Math.max(progress, 0)}%` },
+                      progress >= 100 ? styles.progressComplete : null,
+                    ]}
+                  />
+                </View>
+                <Text style={goalImg ? styles.progressTextLight : styles.progressText}>
+                  {progress >= 100
+                    ? '🎉 已達標！'
+                    : `獲利進度 ${progress.toFixed(0)}%（NT$${totalProfit.toLocaleString('zh-TW')}）`}
+                </Text>
               </View>
             </View>
+          );
+
+          return (
+            <TouchableOpacity
+              key={goal.id}
+              activeOpacity={0.7}
+              onPress={() => openEdit(goal)}
+              style={[styles.goalCardWrapper, i < activeGoals.length - 1 && { marginBottom: 12 }]}
+            >
+              {goalImg ? (
+                <ImageBackground
+                  source={{ uri: goalImg }}
+                  style={styles.goalCardBg}
+                  imageStyle={styles.goalCardBgImage}
+                  onError={() => goalImgKey && onImageError(goalImgKey)}
+                >
+                  <View style={styles.goalCardDarkOverlay}>
+                    {cardContent}
+                  </View>
+                </ImageBackground>
+              ) : (
+                <View style={styles.goalCardNoImage}>
+                  {cardContent}
+                </View>
+              )}
+            </TouchableOpacity>
           );
         })}
       </View>
@@ -356,13 +384,26 @@ export default function MeScreen() {
         <View style={styles.card}>
           <Text style={styles.cardLabel}>已完成的目標 🎉</Text>
           {completedGoals.map((goal) => {
-            const achImg = goal.achievementImageKey ? resolvedImages[goal.achievementImageKey] : null;
+            const achImgKey = goal.achievementImageKey || goal.imageKey;
+            const achImg = achImgKey && !failedImages.has(achImgKey) ? resolvedImages[achImgKey] : null;
             return (
-              <View key={goal.id} style={styles.completedItem}>
+              <View key={goal.id} style={styles.completedCardWrapper}>
                 {achImg ? (
-                  <Image source={{ uri: achImg }} style={styles.completedThumb} />
-                ) : null}
-                <Text style={styles.completedName}>{goal.name}</Text>
+                  <ImageBackground
+                    source={{ uri: achImg }}
+                    style={styles.completedCardBg}
+                    imageStyle={styles.goalCardBgImage}
+                    onError={() => achImgKey && onImageError(achImgKey)}
+                  >
+                    <View style={styles.completedCardOverlay}>
+                      <Text style={styles.completedNameLight}>{goal.name}</Text>
+                    </View>
+                  </ImageBackground>
+                ) : (
+                  <View style={styles.completedItem}>
+                    <Text style={styles.completedName}>{goal.name}</Text>
+                  </View>
+                )}
               </View>
             );
           })}
@@ -532,30 +573,58 @@ const styles = StyleSheet.create({
   cardLabel: { fontSize: 13, color: '#888888', marginBottom: 16, letterSpacing: 0.5 },
   addBtn: { fontSize: 14, color: '#86A874', fontWeight: '500' },
   emptyText: { fontSize: 15, color: '#BBBBBB', textAlign: 'center', paddingVertical: 12 },
-  goalItem: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#F4F1ED',
+  // Goal card with background image
+  goalCardWrapper: {
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  goalCardBg: {
+    width: '100%',
+    minHeight: 120,
+  },
+  goalCardBgImage: {
+    borderRadius: 16,
+  },
+  goalCardDarkOverlay: {
+    backgroundColor: 'rgba(0,0,0,0.40)',
+    borderRadius: 16,
+    padding: 16,
+  },
+  goalCardNoImage: {
+    backgroundColor: '#F9F8F6',
+    borderRadius: 16,
+    padding: 16,
+  },
+  goalCardOverlay: {
+    flex: 1,
+    justifyContent: 'space-between',
     backgroundColor: 'transparent',
   },
-  goalItemLast: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingVertical: 14, backgroundColor: 'transparent',
+  goalCardTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    backgroundColor: 'transparent',
   },
-  goalContent: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    flex: 1, backgroundColor: 'transparent',
-  },
-  goalThumb: { width: 44, height: 44, borderRadius: 10 },
-  goalInfo: { flex: 1, backgroundColor: 'transparent' },
-  goalName: { fontSize: 16, color: '#222222', fontWeight: '500' },
-  goalAmount: { fontSize: 13, color: '#BBBBBB', marginTop: 2 },
+  goalCardInfo: { flex: 1, backgroundColor: 'transparent' },
+  goalCardBottom: { marginTop: 12, backgroundColor: 'transparent' },
+  goalName: { fontSize: 16, color: '#222222', fontWeight: '600' },
+  goalNameLight: { fontSize: 16, color: '#FFFFFF', fontWeight: '600' },
+  goalAmount: { fontSize: 13, color: '#BBBBBB', marginTop: 4 },
+  goalAmountLight: { fontSize: 13, color: 'rgba(255,255,255,0.85)', marginTop: 4 },
   progressBar: {
     height: 4, borderRadius: 2, backgroundColor: '#F0EDE8',
-    marginTop: 8, overflow: 'hidden',
+    overflow: 'hidden',
+  },
+  progressBarLight: {
+    height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.3)',
+    overflow: 'hidden',
   },
   progressFill: { height: 4, borderRadius: 2, backgroundColor: '#86A874' },
+  progressFillLight: { height: 4, borderRadius: 2, backgroundColor: '#FFFFFF' },
   progressComplete: { backgroundColor: '#6B9E5B' },
   progressText: { fontSize: 11, color: '#AAAAAA', marginTop: 4 },
+  progressTextLight: { fontSize: 11, color: 'rgba(255,255,255,0.8)', marginTop: 4 },
   goalActions: {
     flexDirection: 'column', alignItems: 'center', gap: 6,
     marginLeft: 8, backgroundColor: 'transparent',
@@ -570,11 +639,26 @@ const styles = StyleSheet.create({
     backgroundColor: '#F9F8F6', alignItems: 'center', justifyContent: 'center',
   },
   deleteBtnText: { fontSize: 14, color: '#CCCCCC' },
+  deleteBtnLight: {
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center',
+  },
+  deleteBtnTextLight: { fontSize: 14, color: 'rgba(255,255,255,0.8)' },
+  completedCardWrapper: {
+    borderRadius: 12, overflow: 'hidden', marginBottom: 10,
+  },
+  completedCardBg: {
+    width: '100%', height: 64,
+  },
+  completedCardOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.35)',
+    borderRadius: 12, justifyContent: 'center', paddingHorizontal: 16,
+  },
+  completedNameLight: { fontSize: 15, color: '#FFFFFF', fontWeight: '500' },
   completedItem: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     paddingVertical: 10, backgroundColor: 'transparent',
   },
-  completedThumb: { width: 36, height: 36, borderRadius: 8 },
   completedName: { fontSize: 15, color: '#BBBBBB', textDecorationLine: 'line-through' },
   signOutButton: { paddingTop: 8, alignItems: 'center' },
   signOutText: { fontSize: 15, color: '#C47777', fontWeight: '500' },

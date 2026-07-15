@@ -60,7 +60,9 @@ export default function AddGoalScreen() {
         const token = await getAccessToken();
         const fileName = `goal-${Date.now()}.jpg`;
         const upload = await getPortfolioUploadUrl(token, fileName, 'image/jpeg');
+        console.log('[AddGoal] Upload URL response - key:', upload.key);
         await uploadImageToS3(upload, imageUri, 'image/jpeg');
+        console.log('[AddGoal] Image uploaded successfully to S3');
         imageKey = upload.key;
       }
 
@@ -71,10 +73,11 @@ export default function AddGoalScreen() {
         description,
         imageKey,
       });
+      console.log('[AddGoal] Goal created with imageKey:', imageKey);
       setSaved(true);
       setTimeout(() => router.back(), 1200);
-    } catch {
-      // silent
+    } catch (err) {
+      console.error('[AddGoal] Error saving goal:', err);
     } finally {
       setSaving(false);
     }
