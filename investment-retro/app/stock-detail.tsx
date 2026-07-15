@@ -82,7 +82,7 @@ export default function StockDetailScreen() {
               ]}
             >
               {stock.unrealizedPnL != null
-                ? `${stock.unrealizedPnL >= 0 ? '+' : ''}NT$${Math.abs(stock.unrealizedPnL).toLocaleString('zh-TW')}`
+                ? `${stock.unrealizedPnL >= 0 ? '+' : '-'}NT$${Math.abs(stock.unrealizedPnL).toLocaleString('zh-TW')}`
                 : '—'}
             </Text>
           </View>
@@ -156,7 +156,7 @@ export default function StockDetailScreen() {
                 stock.unrealizedPnL >= 0 ? styles.positive : styles.negative,
               ]}
             >
-              {stock.unrealizedPnL >= 0 ? '+' : ''}NT$
+              {stock.unrealizedPnL >= 0 ? '+' : '-'}NT$
               {Math.abs(stock.unrealizedPnL).toLocaleString('zh-TW')}
             </Text>
           </View>
@@ -268,8 +268,8 @@ const styles = StyleSheet.create({
   },
   summaryLabel: { fontSize: 12, color: '#AAAAAA', marginBottom: 4 },
   summaryValue: { fontSize: 17, fontWeight: '600', color: '#222222' },
-  positive: { color: '#86A874' },
-  negative: { color: '#D68E8E' },
+  positive: { color: '#D68E8E' },
+  negative: { color: '#86A874' },
   riskRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',

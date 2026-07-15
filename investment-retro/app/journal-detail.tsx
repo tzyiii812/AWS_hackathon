@@ -211,8 +211,8 @@ const styles = StyleSheet.create({
   snapshotValue: { fontSize: 20, fontWeight: '600', color: '#FFFFFF' },
   snapshotLabel: { fontSize: 11, color: 'rgba(255,255,255,0.5)', marginTop: 4 },
   snapshotMeta: { fontSize: 12, color: 'rgba(255,255,255,0.4)' },
-  pnlGreen: { color: '#B6C9A8' },
-  pnlRed: { color: '#E8A8A8' },
+  pnlGreen: { color: '#E8A8A8' },
+  pnlRed: { color: '#B6C9A8' },
 
   diarySection: { paddingHorizontal: 24, marginBottom: 24, backgroundColor: 'transparent' },
   diaryBody: { fontSize: 16, color: '#444444', lineHeight: 28 },

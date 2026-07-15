@@ -304,7 +304,7 @@ async function generateLocalResponse(
       const lines = [
         `📊 你的投資組合摘要\n`,
         `持股 ${holdings.length} 檔，總市值 NT$${totalMV.toLocaleString('zh-TW')}`,
-        totalCostLocal > 0 ? `總成本 NT$${totalCostLocal.toLocaleString('zh-TW')}，未實現損益 ${totalPnLLocal >= 0 ? '+' : ''}NT$${Math.abs(totalPnLLocal).toLocaleString('zh-TW')}` : '',
+        totalCostLocal > 0 ? `總成本 NT$${totalCostLocal.toLocaleString('zh-TW')}，未實現損益 ${totalPnLLocal >= 0 ? '+' : '-'}NT$${Math.abs(totalPnLLocal).toLocaleString('zh-TW')}` : '',
         '',
         `前 5 大持股：`,
       ];

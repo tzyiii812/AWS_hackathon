@@ -11,6 +11,7 @@ import { useRouter } from 'expo-router';
 import { useAuth } from '@/context/AuthContext';
 import { useGoals } from '@/context/GoalContext';
 import { usePortfolio } from '@/context/PortfolioContext';
+import { usePortfolioHistory } from '@/context/PortfolioHistoryContext';
 import { usePortfolioPnL } from '@/hooks/usePortfolioPnL';
 import { useRealizedPnL } from '@/hooks/useRealizedPnL';
 import { getImageReadUrl } from '@/services/api';
@@ -18,11 +19,9 @@ import { AIProfileCard } from '@/components/ai-profile';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_WIDTH = SCREEN_WIDTH - 40;
-const CARD_HEIGHT = 200;
 
 const PLACEHOLDER_TIPS = [
   { id: '1', icon: '💡', title: '試試問 AI', content: '上傳持股截圖後，AI 可以分析你的投資組合配置。' },
-  { id: '2', icon: '📊', title: '持續追蹤', content: '定期更新持股，才能看到報酬趨勢和進度。' },
 ];
 
 /** Cached presigned URLs for goal images */
@@ -33,6 +32,7 @@ export default function HomeScreen() {
   const { session, getAccessToken } = useAuth();
   const { activeGoals, totalTarget, completedCount } = useGoals();
   const { latest } = usePortfolio();
+  const { portfolios } = usePortfolioHistory();
   const pnl = usePortfolioPnL();
   const realized = useRealizedPnL();
   const portfolioValue = pnl.totalMarketValue;
@@ -233,7 +233,7 @@ export default function HomeScreen() {
               }
             >
               {unrealizedPnL != null
-                ? `${unrealizedPnL >= 0 ? '+' : ''}NT$${Math.abs(unrealizedPnL).toLocaleString('zh-TW')}`
+                ? `${unrealizedPnL >= 0 ? '+' : '-'}NT$${Math.abs(unrealizedPnL).toLocaleString('zh-TW')}`
                 : '—'}
               {returnRate != null ? ` (${returnRate >= 0 ? '+' : ''}${returnRate.toFixed(2)}%)` : ''}
             </Text>
@@ -272,7 +272,7 @@ export default function HomeScreen() {
               }
             >
               {realized.totalRealizedPnL != null
-                ? `${realized.totalRealizedPnL >= 0 ? '+' : ''}NT$${Math.abs(realized.totalRealizedPnL).toLocaleString('zh-TW')}`
+                ? `${realized.totalRealizedPnL >= 0 ? '+' : '-'}NT$${Math.abs(realized.totalRealizedPnL).toLocaleString('zh-TW')}`
                 : 'NT$0'}
             </Text>
             <Text style={styles.realizedMeta}>
@@ -300,7 +300,7 @@ export default function HomeScreen() {
                         : styles.realizedItemLoss
                     }
                   >
-                    {trade.realizedPnL >= 0 ? '+' : ''}NT$
+                    {trade.realizedPnL >= 0 ? '+' : '-'}NT$
                     {Math.abs(trade.realizedPnL).toLocaleString('zh-TW')}
                   </Text>
                 </View>
@@ -333,9 +333,109 @@ export default function HomeScreen() {
         </>
       )}
 
-      {/* Memory — 未來接真實歷史對比資料後啟用 */}
+      {/* Retrospective — 投資回憶 */}
+      {(() => {
+        if (portfolios.length < 2) return null;
 
-      {/* Recent Journal — 未來接 journal 資料後啟用 */}
+        const now = new Date();
+        const oneYearAgoMs = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate()).getTime();
+
+        // Sort portfolios oldest first
+        const sorted = [...portfolios].sort(
+          (a, b) => a.yearMonth.localeCompare(b.yearMonth)
+        );
+
+        // Find the closest snapshot to one year ago
+        let pastSnapshot = sorted[0];
+        let bestDiff = Infinity;
+        for (const p of sorted) {
+          const pDate = new Date(p.yearMonth.length > 7 ? p.yearMonth : p.yearMonth + '-01');
+          const diff = Math.abs(pDate.getTime() - oneYearAgoMs);
+          if (diff < bestDiff) {
+            bestDiff = diff;
+            pastSnapshot = p;
+          }
+        }
+
+        // Only show if within ~4 months of one year ago & not too recent
+        if (!pastSnapshot || bestDiff > 120 * 24 * 60 * 60 * 1000) return null;
+        const pastDate = new Date(pastSnapshot.yearMonth.length > 7 ? pastSnapshot.yearMonth : pastSnapshot.yearMonth + '-01');
+        const monthsAgo = (now.getTime() - pastDate.getTime()) / (30 * 24 * 60 * 60 * 1000);
+        if (monthsAgo < 3 || !latest) return null;
+
+        // Build the memory narrative
+        const ymParts = pastSnapshot.yearMonth.split('-');
+        const displayDate = `${ymParts[0]} 年 ${parseInt(ymParts[1])} 月`;
+        const pastHoldings = pastSnapshot.holdings;
+        const pastValue = pastSnapshot.totalMarketValue || 0;
+
+        // Find top holdings at that time
+        const topHoldings = [...pastHoldings]
+          .filter((h) => (h.marketValue ?? 0) > 0)
+          .sort((a, b) => (b.marketValue ?? 0) - (a.marketValue ?? 0))
+          .slice(0, 3);
+
+        // Find stocks that existed then but not now (sold since)
+        const currentSymbols = new Set(latest.holdings.map((h) => h.symbol));
+        const soldSince = pastHoldings
+          .filter((h) => h.shares > 0 && !currentSymbols.has(h.symbol))
+          .slice(0, 3);
+
+        // Find stocks that exist now but didn't then (new buys)
+        const pastSymbols = new Set(pastHoldings.map((h) => h.symbol));
+        const newSince = latest.holdings
+          .filter((h) => h.shares > 0 && !pastSymbols.has(h.symbol))
+          .slice(0, 3);
+
+        return (
+          <View style={styles.card}>
+            <Text style={styles.cardLabel}>🕰️ 投資回憶</Text>
+            <Text style={styles.retroTitle}>{displayDate}，你的投資組合長這樣</Text>
+
+            <Text style={styles.retroNarrative}>
+              那時候你持有 {pastHoldings.length} 檔股票
+              {pastValue > 0 ? `，總市值 NT$${pastValue.toLocaleString('zh-TW')}` : ''}。
+            </Text>
+
+            {topHoldings.length > 0 && (
+              <View style={styles.retroSection}>
+                <Text style={styles.retroSectionLabel}>當時的主力持股</Text>
+                {topHoldings.map((h) => (
+                  <Text key={h.symbol} style={styles.retroItem}>
+                    • {h.name || h.symbol}（{h.symbol}）— {h.shares} 股
+                  </Text>
+                ))}
+              </View>
+            )}
+
+            {soldSince.length > 0 && (
+              <View style={styles.retroSection}>
+                <Text style={styles.retroSectionLabel}>後來離開的夥伴</Text>
+                {soldSince.map((h) => (
+                  <Text key={h.symbol} style={styles.retroItem}>
+                    • {h.name || h.symbol}（{h.symbol}）
+                  </Text>
+                ))}
+              </View>
+            )}
+
+            {newSince.length > 0 && (
+              <View style={styles.retroSection}>
+                <Text style={styles.retroSectionLabel}>之後加入的新成員</Text>
+                {newSince.map((h) => (
+                  <Text key={h.symbol} style={styles.retroItem}>
+                    • {h.name || h.symbol}（{h.symbol}）
+                  </Text>
+                ))}
+              </View>
+            )}
+
+            <Text style={styles.retroFooter}>
+              每一次的決定都是成長的一部分 🌱
+            </Text>
+          </View>
+        );
+      })()}
 
       <View style={styles.bottomPadding} />
     </ScrollView>
@@ -359,10 +459,10 @@ const styles = StyleSheet.create({
   },
   goalCard: {
     width: CARD_WIDTH,
-    height: CARD_HEIGHT,
+    minHeight: 160,
     backgroundColor: '#FFFFFF',
     borderRadius: 24,
-    padding: 28,
+    padding: 24,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.04,
@@ -372,7 +472,7 @@ const styles = StyleSheet.create({
   },
   goalCardWithImage: {
     width: CARD_WIDTH,
-    height: CARD_HEIGHT,
+    minHeight: 160,
     borderRadius: 24,
     overflow: 'hidden',
     shadowColor: '#000',
@@ -388,7 +488,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.40)',
     borderRadius: 24,
-    padding: 28,
+    padding: 24,
     justifyContent: 'center',
   },
   goalCardContent: {
@@ -435,23 +535,23 @@ const styles = StyleSheet.create({
     marginTop: -2,
   },
 
-  goalCardLabel: { fontSize: 13, color: '#888888', marginBottom: 8, letterSpacing: 0.5 },
-  goalCardTitle: { fontSize: 16, fontWeight: '500', color: '#555555', marginBottom: 12 },
-  totalAmount: { fontSize: 32, fontWeight: '600', color: '#222222' },
-  totalLabel: { fontSize: 14, color: '#888888', marginTop: 4 },
-  goalName: { fontSize: 22, fontWeight: '600', color: '#222222', marginBottom: 6 },
-  goalNameLight: { fontSize: 22, fontWeight: '600', color: '#FFFFFF', marginBottom: 6 },
-  goalTarget: { fontSize: 15, color: '#888888' },
-  goalTargetLight: { fontSize: 15, color: 'rgba(255,255,255,0.85)' },
-  goalDesc: { fontSize: 13, color: '#BBBBBB', marginTop: 6 },
-  goalDescLight: { fontSize: 13, color: 'rgba(255,255,255,0.7)', marginTop: 6 },
+  goalCardLabel: { fontSize: 12, color: '#888888', marginBottom: 6, letterSpacing: 0.5 },
+  goalCardTitle: { fontSize: 15, fontWeight: '500', color: '#555555', marginBottom: 10 },
+  totalAmount: { fontSize: 28, fontWeight: '600', color: '#222222' },
+  totalLabel: { fontSize: 13, color: '#888888', marginTop: 4 },
+  goalName: { fontSize: 20, fontWeight: '600', color: '#222222', marginBottom: 4 },
+  goalNameLight: { fontSize: 20, fontWeight: '600', color: '#FFFFFF', marginBottom: 4 },
+  goalTarget: { fontSize: 14, color: '#888888' },
+  goalTargetLight: { fontSize: 14, color: 'rgba(255,255,255,0.85)' },
+  goalDesc: { fontSize: 12, color: '#BBBBBB', marginTop: 4 },
+  goalDescLight: { fontSize: 12, color: 'rgba(255,255,255,0.7)', marginTop: 4 },
   goalProgressBar: {
     height: 4, borderRadius: 2, backgroundColor: '#F0EDE8',
-    marginTop: 14, overflow: 'hidden',
+    marginTop: 10, overflow: 'hidden',
   },
   goalProgressBarLight: {
     height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.3)',
-    marginTop: 14, overflow: 'hidden',
+    marginTop: 10, overflow: 'hidden',
   },
   goalProgressFill: { height: 4, borderRadius: 2, backgroundColor: '#86A874' },
   goalProgressFillLight: { height: 4, borderRadius: 2, backgroundColor: '#FFFFFF' },
@@ -475,9 +575,9 @@ const styles = StyleSheet.create({
   },
   cardLabel: { fontSize: 13, color: '#888888', marginBottom: 8, letterSpacing: 0.5 },
   portfolioValue: { fontSize: 32, fontWeight: '600', color: '#222222', marginBottom: 4 },
-  portfolioLoss: { fontSize: 14, color: '#D68E8E', marginTop: 4 },
+  portfolioLoss: { fontSize: 14, color: '#86A874', marginTop: 4 },
   emptyPortfolioTitle: { fontSize: 22, fontWeight: '600', color: '#222222', marginTop: 4, marginBottom: 8 },
-  portfolioGain: { fontSize: 16, color: '#B6C9A8', fontWeight: '500', marginBottom: 8 },
+  portfolioGain: { fontSize: 16, color: '#D68E8E', fontWeight: '500', marginBottom: 8 },
   portfolioMeta: { fontSize: 14, color: '#888888' },
   viewAll: { fontSize: 14, color: '#AFC8E8', fontWeight: '500', marginTop: 14 },
 
@@ -504,8 +604,8 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   realizedToggle: { fontSize: 12, color: '#AAAAAA' },
-  realizedGain: { fontSize: 26, fontWeight: '600', color: '#86A874', marginBottom: 4 },
-  realizedLoss: { fontSize: 26, fontWeight: '600', color: '#D68E8E', marginBottom: 4 },
+  realizedGain: { fontSize: 26, fontWeight: '600', color: '#D68E8E', marginBottom: 4 },
+  realizedLoss: { fontSize: 26, fontWeight: '600', color: '#86A874', marginBottom: 4 },
   realizedMeta: { fontSize: 13, color: '#AAAAAA' },
   realizedList: {
     borderTopWidth: 1,
@@ -524,8 +624,16 @@ const styles = StyleSheet.create({
   realizedRowLeft: { flex: 1, backgroundColor: 'transparent' },
   realizedName: { fontSize: 14, fontWeight: '500', color: '#333333' },
   realizedDetail: { fontSize: 12, color: '#AAAAAA', marginTop: 2 },
-  realizedItemGain: { fontSize: 14, fontWeight: '500', color: '#86A874' },
-  realizedItemLoss: { fontSize: 14, fontWeight: '500', color: '#D68E8E' },
+  realizedItemGain: { fontSize: 14, fontWeight: '500', color: '#D68E8E' },
+  realizedItemLoss: { fontSize: 14, fontWeight: '500', color: '#86A874' },
+
+  // Retrospective card
+  retroTitle: { fontSize: 16, fontWeight: '500', color: '#333333', marginBottom: 10 },
+  retroNarrative: { fontSize: 14, color: '#666666', lineHeight: 21, marginBottom: 12 },
+  retroSection: { marginBottom: 12, backgroundColor: 'transparent' },
+  retroSectionLabel: { fontSize: 13, fontWeight: '600', color: '#888888', marginBottom: 6 },
+  retroItem: { fontSize: 14, color: '#555555', lineHeight: 22, paddingLeft: 4 },
+  retroFooter: { fontSize: 13, color: '#AAAAAA', marginTop: 8, fontStyle: 'italic' },
 
   // (reserved for future memory / journal cards)
 

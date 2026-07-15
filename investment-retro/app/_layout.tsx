@@ -13,6 +13,7 @@ import { GoalProvider } from '@/context/GoalContext';
 import { PortfolioProvider } from '@/context/PortfolioContext';
 import { PortfolioHistoryProvider } from '@/context/PortfolioHistoryContext';
 import { AIProfileProvider } from '@/context/AIProfileContext';
+import { initSellPriceSync } from '@/services/sellPriceStore';
 
 export { ErrorBoundary } from 'expo-router';
 
@@ -51,9 +52,16 @@ export default function RootLayout() {
 
 function RootLayoutNav() {
   const colorScheme = useColorScheme();
-  const { initializing, isAuthenticated } = useAuth();
+  const { initializing, isAuthenticated, getAccessToken } = useAuth();
   const router = useRouter();
   const segments = useSegments();
+
+  // Initialize sell price sync with backend
+  useEffect(() => {
+    if (isAuthenticated) {
+      initSellPriceSync(getAccessToken);
+    }
+  }, [isAuthenticated, getAccessToken]);
 
   useEffect(() => {
     if (initializing) {

@@ -125,7 +125,7 @@ export default function HoldingsScreen() {
               }
             >
               {pnl.unrealizedPnL != null
-                ? `${pnl.unrealizedPnL >= 0 ? '+' : ''}NT$${Math.abs(pnl.unrealizedPnL).toLocaleString('zh-TW')}`
+                ? `${pnl.unrealizedPnL >= 0 ? '+' : '-'}NT$${Math.abs(pnl.unrealizedPnL).toLocaleString('zh-TW')}`
                 : '—'}
             </Text>
           </View>
@@ -174,7 +174,7 @@ export default function HoldingsScreen() {
                   : styles.realizedNegative
               }
             >
-              {realized.totalRealizedPnL >= 0 ? '+' : ''}NT$
+              {realized.totalRealizedPnL >= 0 ? '+' : '-'}NT$
               {Math.abs(realized.totalRealizedPnL).toLocaleString('zh-TW')}
             </Text>
           ) : (
@@ -204,7 +204,7 @@ export default function HoldingsScreen() {
                         : styles.tradeLoss
                     }
                   >
-                    {trade.realizedPnL >= 0 ? '+' : ''}NT$
+                    {trade.realizedPnL >= 0 ? '+' : '-'}NT$
                     {Math.abs(trade.realizedPnL).toLocaleString('zh-TW')}
                   </Text>
                 </View>
@@ -278,7 +278,7 @@ export default function HoldingsScreen() {
               <Text style={styles.detailLabel}>損益</Text>
               <Text style={styles.detailValue}>
                 {stock.unrealizedPnL != null
-                  ? `${stock.unrealizedPnL >= 0 ? '+' : ''}NT$${Math.abs(stock.unrealizedPnL).toLocaleString('zh-TW')}`
+                  ? `${stock.unrealizedPnL >= 0 ? '+' : '-'}NT$${Math.abs(stock.unrealizedPnL).toLocaleString('zh-TW')}`
                   : '—'}
               </Text>
             </View>
@@ -355,8 +355,8 @@ const styles = StyleSheet.create({
   summaryItemRight: { backgroundColor: 'transparent', alignItems: 'flex-end' },
   summaryLabel: { fontSize: 13, color: '#888888', marginBottom: 4 },
   summaryValue: { fontSize: 22, fontWeight: '600', color: '#222222' },
-  summaryPositive: { fontSize: 22, fontWeight: '600', color: '#86A874' },
-  summaryNegative: { fontSize: 22, fontWeight: '600', color: '#D68E8E' },
+  summaryPositive: { fontSize: 22, fontWeight: '600', color: '#D68E8E' },
+  summaryNegative: { fontSize: 22, fontWeight: '600', color: '#86A874' },
   brokerText: { marginTop: 14, fontSize: 13, color: '#AAAAAA' },
   dataDateText: { marginTop: 6, fontSize: 12, color: '#BBBBBB' },
   errorBanner: {
@@ -403,8 +403,8 @@ const styles = StyleSheet.create({
   stockName: { fontSize: 17, fontWeight: '500', color: '#222222' },
   stockCode: { fontSize: 13, color: '#BBBBBB', marginTop: 2 },
   stockValue: { fontSize: 16, fontWeight: '500', color: '#222222' },
-  stockGain: { fontSize: 14, color: '#86A874', fontWeight: '500', marginTop: 2 },
-  stockLoss: { fontSize: 14, color: '#D68E8E', fontWeight: '500', marginTop: 2 },
+  stockGain: { fontSize: 14, color: '#D68E8E', fontWeight: '500', marginTop: 2 },
+  stockLoss: { fontSize: 14, color: '#86A874', fontWeight: '500', marginTop: 2 },
   stockNoData: { fontSize: 14, color: '#BBBBBB', marginTop: 2 },
   stockDetails: {
     flexDirection: 'row',
@@ -442,8 +442,8 @@ const styles = StyleSheet.create({
   realizedHeader: { marginBottom: 10, backgroundColor: 'transparent' },
   realizedTitle: { fontSize: 15, fontWeight: '600', color: '#222222' },
   realizedNote: { fontSize: 12, color: '#AAAAAA', marginTop: 2 },
-  realizedPositive: { fontSize: 20, fontWeight: '600', color: '#86A874' },
-  realizedNegative: { fontSize: 20, fontWeight: '600', color: '#D68E8E' },
+  realizedPositive: { fontSize: 20, fontWeight: '600', color: '#D68E8E' },
+  realizedNegative: { fontSize: 20, fontWeight: '600', color: '#86A874' },
   realizedPending: { fontSize: 16, color: '#AAAAAA', marginTop: 4 },
   realizedWarning: { fontSize: 12, color: '#9A7B4F', marginTop: 6 },
   realizedTrades: {
@@ -463,8 +463,8 @@ const styles = StyleSheet.create({
   tradeLeft: { flex: 1, backgroundColor: 'transparent' },
   tradeName: { fontSize: 14, fontWeight: '500', color: '#333333' },
   tradeDetail: { fontSize: 12, color: '#AAAAAA', marginTop: 2 },
-  tradeGain: { fontSize: 14, fontWeight: '500', color: '#86A874' },
-  tradeLoss: { fontSize: 14, fontWeight: '500', color: '#D68E8E' },
+  tradeGain: { fontSize: 14, fontWeight: '500', color: '#D68E8E' },
+  tradeLoss: { fontSize: 14, fontWeight: '500', color: '#86A874' },
   tradeNoData: { fontSize: 14, color: '#BBBBBB' },
   tradeMore: { fontSize: 12, color: '#AAAAAA', marginTop: 8, textAlign: 'center' },
 });

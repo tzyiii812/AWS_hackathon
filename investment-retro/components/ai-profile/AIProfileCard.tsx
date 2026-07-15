@@ -69,10 +69,8 @@ export function AIProfileCard() {
   // Don't show while loading
   if (loading) return null;
 
-  // All complete → show completion card
-  if (isComplete) {
-    return <AIProfileCompletionCard onEdit={handleEdit} />;
-  }
+  // All complete → hide card entirely
+  if (isComplete) return null;
 
   // Dismissed for this session
   if (dismissed) return null;

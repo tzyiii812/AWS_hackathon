@@ -297,8 +297,8 @@ const styles = StyleSheet.create({
   statBlock: { backgroundColor: 'transparent' },
   statValue: { fontSize: 18, fontWeight: '600', color: '#FFFFFF', marginBottom: 4 },
   statLabel: { fontSize: 11, color: 'rgba(255,255,255,0.5)', letterSpacing: 0.5 },
-  pnlPositive: { color: '#B6C9A8' },
-  pnlNegative: { color: '#E8A8A8' },
+  pnlPositive: { color: '#E8A8A8' },
+  pnlNegative: { color: '#B6C9A8' },
 
   closingSection: { borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)', paddingTop: 16, backgroundColor: 'transparent' },
   closingText: { fontSize: 14, color: 'rgba(255,255,255,0.75)', lineHeight: 22, fontStyle: 'italic' },

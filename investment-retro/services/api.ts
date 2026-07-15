@@ -422,3 +422,22 @@ export async function patchAIProfile(
     body: JSON.stringify(updates),
   });
 }
+
+// === Sell Prices (已實現損益) ===
+
+export async function getSellPricesFromServer(
+  accessToken: string
+): Promise<{ records: Record<string, unknown> }> {
+  return apiRequest('/user/sell-prices', accessToken);
+}
+
+export async function putSellPricesToServer(
+  accessToken: string,
+  records: Record<string, unknown>,
+  merge = true
+): Promise<{ records: Record<string, unknown>; message?: string }> {
+  return apiRequest('/user/sell-prices', accessToken, {
+    method: 'PUT',
+    body: JSON.stringify({ records, merge }),
+  });
+}

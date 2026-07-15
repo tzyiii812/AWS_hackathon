@@ -912,8 +912,8 @@ const styles = StyleSheet.create({
   },
   addHoldingText: { color: '#666666', fontSize: 14, fontWeight: '500' },
   changeCard: { backgroundColor: '#FFFFFF', borderRadius: 20, padding: 20, marginBottom: 12 },
-  changeLabel: { fontSize: 14, fontWeight: '600', color: '#86A874', marginBottom: 8 },
-  changeLabelNeg: { fontSize: 14, fontWeight: '600', color: '#D68E8E', marginBottom: 8 },
+  changeLabel: { fontSize: 14, fontWeight: '600', color: '#D68E8E', marginBottom: 8 },
+  changeLabelNeg: { fontSize: 14, fontWeight: '600', color: '#86A874', marginBottom: 8 },
   changeItem: { fontSize: 15, color: '#555555', paddingVertical: 4, lineHeight: 22 },
   noChangeText: { fontSize: 15, color: '#777777' },
   summaryCard: {
@@ -926,8 +926,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   summaryText: { fontSize: 15, color: '#555555' },
-  summaryValue: { fontSize: 18, fontWeight: '600', color: '#86A874' },
-  summaryValueNegative: { color: '#D68E8E' },
+  summaryValue: { fontSize: 18, fontWeight: '600', color: '#D68E8E' },
+  summaryValueNegative: { color: '#86A874' },
   btnRow: { flexDirection: 'row', gap: 12, marginTop: 8, backgroundColor: 'transparent' },
   primaryBtn: {
     flex: 1,

@@ -90,7 +90,7 @@ export default function InsightsScreen() {
               }
             >
               {pnl.unrealizedPnL != null
-                ? `${pnl.unrealizedPnL >= 0 ? '+' : ''}NT$${Math.abs(pnl.unrealizedPnL).toLocaleString('zh-TW')} 未實現損益`
+                ? `${pnl.unrealizedPnL >= 0 ? '+' : '-'}NT$${Math.abs(pnl.unrealizedPnL).toLocaleString('zh-TW')} 未實現損益`
                 : '未實現損益 —'}
               {pnl.returnRate != null
                 ? ` (${pnl.returnRate >= 0 ? '+' : ''}${pnl.returnRate.toFixed(2)}%)`
@@ -203,10 +203,9 @@ export default function InsightsScreen() {
                               : styles.holdingLoss
                           }
                         >
-                          {stock.unrealizedPnL >= 0 ? '+' : ''}
                           {stock.returnRate != null
-                            ? `${stock.returnRate.toFixed(2)}%`
-                            : `NT$${Math.abs(stock.unrealizedPnL).toLocaleString('zh-TW')}`}
+                            ? `${stock.returnRate >= 0 ? '+' : ''}${stock.returnRate.toFixed(2)}%`
+                            : `${stock.unrealizedPnL >= 0 ? '+' : '-'}NT$${Math.abs(stock.unrealizedPnL).toLocaleString('zh-TW')}`}
                         </Text>
                       ) : (
                         <Text style={styles.holdingNoData}>—</Text>
@@ -269,8 +268,8 @@ const styles = StyleSheet.create({
   },
   cardLabel: { fontSize: 13, color: '#888888', marginBottom: 12, letterSpacing: 0.5 },
   marketValue: { fontSize: 34, fontWeight: '600', color: '#222222' },
-  positiveText: { fontSize: 15, color: '#86A874', marginTop: 6, fontWeight: '500' },
-  negativeText: { fontSize: 15, color: '#D68E8E', marginTop: 6, fontWeight: '500' },
+  positiveText: { fontSize: 15, color: '#D68E8E', marginTop: 6, fontWeight: '500' },
+  negativeText: { fontSize: 15, color: '#86A874', marginTop: 6, fontWeight: '500' },
   snapshotMeta: { fontSize: 13, color: '#AAAAAA', marginTop: 12 },
   emptyCard: {
     backgroundColor: '#FFFFFF',
@@ -283,8 +282,8 @@ const styles = StyleSheet.create({
   emptyTitle: { fontSize: 19, fontWeight: '600', color: '#222222' },
   emptyText: { fontSize: 14, color: '#888888', lineHeight: 21, textAlign: 'center', marginTop: 8 },
   emptyAction: { fontSize: 14, color: '#86A874', fontWeight: '600', marginTop: 16 },
-  holdingGain: { fontSize: 13, color: '#86A874', fontWeight: '500', marginTop: 2 },
-  holdingLoss: { fontSize: 13, color: '#D68E8E', fontWeight: '500', marginTop: 2 },
+  holdingGain: { fontSize: 13, color: '#D68E8E', fontWeight: '500', marginTop: 2 },
+  holdingLoss: { fontSize: 13, color: '#86A874', fontWeight: '500', marginTop: 2 },
   holdingNoData: { fontSize: 13, color: '#BBBBBB', marginTop: 2 },
   bottomPadding: { height: 40, backgroundColor: 'transparent' },
   searchInput: {
