@@ -10,6 +10,8 @@ import { useRouter } from 'expo-router';
 import { Text, View } from '@/components/Themed';
 import { usePortfolio } from '@/context/PortfolioContext';
 import { usePortfolioPnL } from '@/hooks/usePortfolioPnL';
+import { useRealizedPnL } from '@/hooks/useRealizedPnL';
+import { SellPricePrompt } from '@/components/SellPricePrompt';
 
 /**
  * 公式（由 usePortfolioPnL hook 統一計算）：
@@ -26,6 +28,7 @@ export default function HoldingsScreen() {
   const router = useRouter();
   const { latest, loading, error, refreshLatest } = usePortfolio();
   const pnl = usePortfolioPnL();
+  const realized = useRealizedPnL();
 
   if (loading && !latest) {
     return (
@@ -70,6 +73,24 @@ export default function HoldingsScreen() {
           {new Date(latest.createdAt).toLocaleDateString('zh-TW')}
         </Text>
       </View>
+
+      {/* 市場資料載入錯誤提示 */}
+      {pnl.error ? (
+        <View style={styles.errorBanner}>
+          <Text style={styles.errorBannerText}>{pnl.error}</Text>
+        </View>
+      ) : null}
+
+      {/* 部分持股找不到價格的警示 */}
+      {!pnl.error && pnl.unmatchedSymbols.length > 0 ? (
+        <View style={styles.warningBanner}>
+          <Text style={styles.warningBannerText}>
+            {pnl.unmatchedSymbols.length} 檔找不到市場價格（
+            {pnl.unmatchedSymbols.slice(0, 3).join('、')}
+            {pnl.unmatchedSymbols.length > 3 ? '…' : ''}），損益僅反映可查詢的部分。
+          </Text>
+        </View>
+      ) : null}
 
       {/* Summary Card */}
       <View style={styles.summaryCard}>
@@ -128,7 +149,81 @@ export default function HoldingsScreen() {
         {latest.broker ? (
           <Text style={styles.brokerText}>{latest.broker}・{latest.currency}</Text>
         ) : null}
+        {pnl.dataDate ? (
+          <Text style={styles.dataDateText}>
+            資料更新：{new Date(pnl.dataDate).toLocaleDateString('zh-TW')}
+          </Text>
+        ) : null}
       </View>
+
+      {/* Realized PnL Card */}
+      {(realized.totalRealizedPnL !== null || realized.pendingTrades.length > 0) ? (
+        <View style={styles.realizedCard}>
+          <View style={styles.realizedHeader}>
+            <Text style={styles.realizedTitle}>已實現損益</Text>
+            <Text style={styles.realizedNote}>
+              依歷史快照比對・{realized.confirmedCount} 筆已確認
+              {realized.skippedCount > 0 ? `・${realized.skippedCount} 筆已跳過` : ''}
+            </Text>
+          </View>
+          {realized.totalRealizedPnL !== null ? (
+            <Text
+              style={
+                realized.totalRealizedPnL >= 0
+                  ? styles.realizedPositive
+                  : styles.realizedNegative
+              }
+            >
+              {realized.totalRealizedPnL >= 0 ? '+' : ''}NT$
+              {Math.abs(realized.totalRealizedPnL).toLocaleString('zh-TW')}
+            </Text>
+          ) : (
+            <Text style={styles.realizedPending}>尚未確認賣出價格</Text>
+          )}
+          {realized.pendingTrades.length > 0 ? (
+            <Text style={styles.realizedWarning}>
+              還有 {realized.pendingTrades.length} 筆賣出待確認價格
+            </Text>
+          ) : null}
+          {realized.trades.length > 0 ? (
+            <View style={styles.realizedTrades}>
+              {realized.trades.slice(0, 5).map((trade, idx) => (
+                <View key={`${trade.symbol}-${trade.yearMonth}-${idx}`} style={styles.tradeRow}>
+                  <View style={styles.tradeLeft}>
+                    <Text style={styles.tradeName}>
+                      {trade.name}{trade.isFullSell ? '（清倉）' : ''}
+                    </Text>
+                    <Text style={styles.tradeDetail}>
+                      {trade.yearMonth}・賣出 {trade.soldShares.toLocaleString('zh-TW')} 股・均價 NT${trade.sellPrice}
+                    </Text>
+                  </View>
+                  <Text
+                    style={
+                      trade.realizedPnL >= 0
+                        ? styles.tradeGain
+                        : styles.tradeLoss
+                    }
+                  >
+                    {trade.realizedPnL >= 0 ? '+' : ''}NT$
+                    {Math.abs(trade.realizedPnL).toLocaleString('zh-TW')}
+                  </Text>
+                </View>
+              ))}
+              {realized.trades.length > 5 ? (
+                <Text style={styles.tradeMore}>
+                  還有 {realized.trades.length - 5} 筆…
+                </Text>
+              ) : null}
+            </View>
+          ) : null}
+        </View>
+      ) : null}
+
+      {/* 賣出價格確認 Modal */}
+      <SellPricePrompt
+        pendingTrades={realized.pendingTrades}
+        onComplete={realized.refresh}
+      />
 
       {/* Per-stock cards */}
       {pnl.holdings.map((stock, index) => (
@@ -142,7 +237,7 @@ export default function HoldingsScreen() {
               <Text style={styles.stockValue}>
                 {stock.hasPriceData
                   ? `NT$${stock.marketValue.toLocaleString('zh-TW')}`
-                  : '價格未知'}
+                  : '市值未辨識'}
               </Text>
               {stock.returnRate != null ? (
                 <Text
@@ -263,6 +358,27 @@ const styles = StyleSheet.create({
   summaryPositive: { fontSize: 22, fontWeight: '600', color: '#86A874' },
   summaryNegative: { fontSize: 22, fontWeight: '600', color: '#D68E8E' },
   brokerText: { marginTop: 14, fontSize: 13, color: '#AAAAAA' },
+  dataDateText: { marginTop: 6, fontSize: 12, color: '#BBBBBB' },
+  errorBanner: {
+    marginHorizontal: 20,
+    marginBottom: 12,
+    backgroundColor: '#FDF2F2',
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#F5DADA',
+  },
+  errorBannerText: { fontSize: 13, color: '#A95454', lineHeight: 18 },
+  warningBanner: {
+    marginHorizontal: 20,
+    marginBottom: 12,
+    backgroundColor: '#FFF8F0',
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#F5E6D3',
+  },
+  warningBannerText: { fontSize: 13, color: '#9A7B4F', lineHeight: 18 },
   stockCard: {
     backgroundColor: '#FFFFFF',
     marginHorizontal: 20,
@@ -311,4 +427,44 @@ const styles = StyleSheet.create({
   },
   updateButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '600' },
   bottomPadding: { height: 40, backgroundColor: 'transparent' },
+  realizedCard: {
+    backgroundColor: '#FFFFFF',
+    marginHorizontal: 20,
+    marginBottom: 16,
+    padding: 20,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.03,
+    shadowRadius: 8,
+    elevation: 1,
+  },
+  realizedHeader: { marginBottom: 10, backgroundColor: 'transparent' },
+  realizedTitle: { fontSize: 15, fontWeight: '600', color: '#222222' },
+  realizedNote: { fontSize: 12, color: '#AAAAAA', marginTop: 2 },
+  realizedPositive: { fontSize: 20, fontWeight: '600', color: '#86A874' },
+  realizedNegative: { fontSize: 20, fontWeight: '600', color: '#D68E8E' },
+  realizedPending: { fontSize: 16, color: '#AAAAAA', marginTop: 4 },
+  realizedWarning: { fontSize: 12, color: '#9A7B4F', marginTop: 6 },
+  realizedTrades: {
+    marginTop: 14,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: '#F4F1ED',
+    backgroundColor: 'transparent',
+  },
+  tradeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+    backgroundColor: 'transparent',
+  },
+  tradeLeft: { flex: 1, backgroundColor: 'transparent' },
+  tradeName: { fontSize: 14, fontWeight: '500', color: '#333333' },
+  tradeDetail: { fontSize: 12, color: '#AAAAAA', marginTop: 2 },
+  tradeGain: { fontSize: 14, fontWeight: '500', color: '#86A874' },
+  tradeLoss: { fontSize: 14, fontWeight: '500', color: '#D68E8E' },
+  tradeNoData: { fontSize: 14, color: '#BBBBBB' },
+  tradeMore: { fontSize: 12, color: '#AAAAAA', marginTop: 8, textAlign: 'center' },
 });

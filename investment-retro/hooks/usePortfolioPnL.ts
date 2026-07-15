@@ -1,31 +1,30 @@
 /**
- * usePortfolioPnL — 共用 Hook：用市場資料計算未實現損益
+ * usePortfolioPnL — 共用 Hook：用後端 OCR 辨識的市值計算未實現損益
  *
  * === 單一持股公式 ===
- *   目前市值     = shares × currentPrice（市場資料收盤價）
+ *   目前市值     = holding.marketValue（OCR 從券商截圖辨識出的市值）
+ *   現價（反推） = marketValue ÷ shares
  *   總成本       = shares × avgCost
  *   未實現損益   = 目前市值 - 總成本
  *   未實現報酬率 = 未實現損益 ÷ 總成本 × 100%
  *
  * === 整體投資組合公式 ===
- *   totalMarketValue    = Σ (有效 currentPrice 的持股市值)
+ *   totalMarketValue    = Σ (有效 marketValue 的持股市值)
  *   totalCost           = Σ (能同時算出 marketValue 和 cost 的持股成本)
- *   totalUnrealizedPnL  = Σ (unrealizedPnL !== null 的持股損益)  ← 不是 totalMV - totalCost
+ *   totalUnrealizedPnL  = Σ (unrealizedPnL !== null 的持股損益)
  *   totalReturnRate     = totalUnrealizedPnL ÷ calculableTotalCost × 100%
  *
  * === 邊界處理 ===
  *   - shares <= 0 → 排除，不參與任何計算
  *   - avgCost 無效 (null/NaN/Infinity/負數) → cost = null, 不參與損益加總
- *   - currentPrice 找不到 → marketValue = null, 不參與任何加總
+ *   - marketValue 無效 → 不參與市值和損益加總
  *   - totalCost = 0 → returnRate = null（不除以零）
- *   - 不使用 snapshot.marketValue 作為即時市值 fallback
  *
  * 此 hook 被 Home / Insights / Holdings 共用，確保計算一致。
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { usePortfolio } from '@/context/PortfolioContext';
-import { getLatestPriceValuation, type PriceData } from '@/services/marketData';
 
 // === 型別 ===
 
@@ -34,25 +33,24 @@ export type HoldingPnL = {
   name: string;
   shares: number;
   avgCost: number | null;
+  /** 由 marketValue / shares 反推的現價 */
   currentPrice: number | null;
-  /** shares × currentPrice。若 currentPrice 無效則為 0（向下相容 UI） */
+  /** OCR 辨識的市值（直接使用） */
   marketValue: number;
   cost: number | null;
   unrealizedPnL: number | null;
   returnRate: number | null;
   weight: number;
-  /** 原始 snapshot 中的市值（OCR 上傳時的值），僅供參考 */
-  snapshotMarketValue: number | null;
-  /** 是否有有效的目前價格 */
+  /** 是否有有效的市值資料 */
   hasPriceData: boolean;
   /** 是否有有效的成本資料 */
   hasCostData: boolean;
 };
 
 export type PortfolioPnLSummary = {
-  /** 有效 currentPrice 的持股市值加總（找不到價格的不計入） */
+  /** 有效市值的持股加總 */
   totalMarketValue: number;
-  /** 能同時算出 MV 和 cost 的持股成本加總 */
+  /** 能同時算出 marketValue 和 cost 的持股成本加總 */
   totalCost: number;
   /** 逐檔加總 unrealizedPnL !== null 的結果 */
   unrealizedPnL: number | null;
@@ -62,13 +60,15 @@ export type PortfolioPnLSummary = {
   holdingsCount: number;
   /** 計算後的持股清單（已排除 shares <= 0） */
   holdings: HoldingPnL[];
-  /** 市場資料日期 (YYYYMMDD) */
+  /** 快照建立日期 */
   dataDate: string | null;
-  /** 是否正在載入市場資料 */
+  /** 是否正在載入（現在直接用 snapshot，不需另外載入） */
   loading: boolean;
+  /** 錯誤訊息 */
+  error: string | null;
 
   // === 資料完整度資訊 ===
-  /** 有效持股中找不到 currentPrice 的數量 */
+  /** 有效持股中 marketValue 缺失的數量 */
   missingPriceCount: number;
   /** 有效持股中 avgCost 缺少或無效的數量 */
   missingCostCount: number;
@@ -76,6 +76,8 @@ export type PortfolioPnLSummary = {
   calculableHoldingCount: number;
   /** missingPriceCount > 0 或 missingCostCount > 0 */
   hasIncompleteData: boolean;
+  /** 缺少市值資料的股票代號清單（供除錯用） */
+  unmatchedSymbols: string[];
 };
 
 // === Helper: 安全數值轉換 ===
@@ -104,80 +106,11 @@ function toValidNonNegativeNumber(value: unknown): number | null {
   return n;
 }
 
-// === Helper: 比對股票代號 ===
-
-/**
- * 建立價格查找 Map。
- *
- * price_valuation_latest.json 中 股票代號 可能是：
- *   - number: 50, 2330, 712
- *   - string: "00631L", "00679B"
- *
- * PortfolioHolding.symbol 一律是 string: "0050", "2330", "712"
- *
- * 匹配策略：
- *   1. 以原始值的字串形式為 key（"50", "2330", "00631L"）
- *   2. 對純數字的 symbol，額外存一個補零到 4 位的 key（"50" → "0050"）
- *   3. 查找時先用原始 symbol，找不到再嘗試去掉前導零
- */
-function buildPriceMap(priceData: PriceData[]): Map<string, PriceData> {
-  const map = new Map<string, PriceData>();
-  for (const p of priceData) {
-    const rawSymbol = String(p.股票代號);
-    // 存原始值
-    map.set(rawSymbol, p);
-    // 對純數字且不足 4 位的，補零存一份（e.g. "50" → "0050"）
-    if (/^\d+$/.test(rawSymbol) && rawSymbol.length < 4) {
-      map.set(rawSymbol.padStart(4, '0'), p);
-    }
-  }
-  return map;
-}
-
-/** 從 priceMap 中查找股票，嘗試多種匹配方式 */
-function lookupPrice(priceMap: Map<string, PriceData>, symbol: string): PriceData | undefined {
-  // 直接匹配
-  const direct = priceMap.get(symbol);
-  if (direct) return direct;
-
-  // 嘗試去掉前導零（"0050" → "50"、"0712" → "712"）
-  if (/^0+\d/.test(symbol)) {
-    const stripped = symbol.replace(/^0+/, '');
-    const found = priceMap.get(stripped);
-    if (found) return found;
-  }
-
-  return undefined;
-}
-
 // === Hook ===
 
 export function usePortfolioPnL(): PortfolioPnLSummary {
-  const { latest } = usePortfolio();
-  const [priceMap, setPriceMap] = useState<Map<string, PriceData> | null>(null);
-  const [dataDate, setDataDate] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { latest, loading: portfolioLoading } = usePortfolio();
 
-  // 載入最新市場價格
-  useEffect(() => {
-    let active = true;
-
-    getLatestPriceValuation()
-      .then((snapshot) => {
-        if (active) {
-          setPriceMap(buildPriceMap(snapshot.data));
-          setDataDate(snapshot.date);
-          setLoading(false);
-        }
-      })
-      .catch(() => {
-        if (active) setLoading(false);
-      });
-
-    return () => { active = false; };
-  }, []);
-
-  // 計算每檔持股的損益
   const result = useMemo((): PortfolioPnLSummary => {
     const emptyResult: PortfolioPnLSummary = {
       totalMarketValue: 0,
@@ -186,12 +119,14 @@ export function usePortfolioPnL(): PortfolioPnLSummary {
       returnRate: null,
       holdingsCount: 0,
       holdings: [],
-      dataDate,
-      loading,
+      dataDate: latest?.createdAt ?? null,
+      loading: portfolioLoading,
+      error: null,
       missingPriceCount: 0,
       missingCostCount: 0,
       calculableHoldingCount: 0,
       hasIncompleteData: false,
+      unmatchedSymbols: [],
     };
 
     if (!latest) return emptyResult;
@@ -204,6 +139,7 @@ export function usePortfolioPnL(): PortfolioPnLSummary {
     let missingPriceCount = 0;
     let missingCostCount = 0;
     let calculableHoldingCount = 0;
+    const unmatchedSymbols: string[] = [];
 
     const holdings: HoldingPnL[] = [];
 
@@ -215,28 +151,17 @@ export function usePortfolioPnL(): PortfolioPnLSummary {
       // --- 安全轉換 avgCost ---
       const avgCost = toValidNonNegativeNumber(h.avgCost);
 
-      // --- 從市場資料取得目前價格 ---
-      let currentPrice: number | null = null;
-      if (priceMap && h.symbol) {
-        const priceRow = lookupPrice(priceMap, h.symbol);
-        if (priceRow) {
-          const price = toValidNonNegativeNumber(priceRow.收盤價);
-          if (price !== null && price > 0) {
-            currentPrice = price;
-          }
-        }
-      }
+      // --- 直接使用 OCR 辨識的 marketValue ---
+      const rawMarketValue = toValidNonNegativeNumber(h.marketValue);
+      const hasPriceData = rawMarketValue !== null && rawMarketValue > 0;
+      const marketValue = hasPriceData ? rawMarketValue : null;
 
-      // --- 計算目前市值 ---
-      // 只有 currentPrice 有效時才計算
-      let marketValue: number | null = null;
-      const hasPriceData = currentPrice !== null;
-      if (currentPrice !== null) {
-        marketValue = shares * currentPrice;
-      }
+      // --- 反推現價（供 UI 顯示用） ---
+      const currentPrice = marketValue !== null && shares > 0
+        ? marketValue / shares
+        : null;
 
       // --- 計算持有成本 ---
-      // 只有 avgCost 有效且 >= 0 時才計算
       let cost: number | null = null;
       const hasCostData = avgCost !== null;
       if (avgCost !== null) {
@@ -249,14 +174,16 @@ export function usePortfolioPnL(): PortfolioPnLSummary {
 
       if (marketValue !== null && cost !== null) {
         unrealizedPnL = marketValue - cost;
-        // returnRate: cost > 0 才算，cost == 0 回傳 null
         if (cost > 0) {
           returnRate = (unrealizedPnL / cost) * 100;
         }
       }
 
       // --- 統計 ---
-      if (!hasPriceData) missingPriceCount++;
+      if (!hasPriceData) {
+        missingPriceCount++;
+        unmatchedSymbols.push(h.symbol);
+      }
       if (!hasCostData) missingCostCount++;
 
       if (marketValue !== null) {
@@ -277,13 +204,11 @@ export function usePortfolioPnL(): PortfolioPnLSummary {
         shares,
         avgCost,
         currentPrice,
-        // marketValue: UI 用 .toLocaleString() 呼叫，給 0 作為安全值
         marketValue: marketValue ?? 0,
         cost,
         unrealizedPnL,
         returnRate,
         weight: 0, // 稍後計算
-        snapshotMarketValue: toValidNonNegativeNumber(h.marketValue),
         hasPriceData,
         hasCostData,
       });
@@ -310,14 +235,16 @@ export function usePortfolioPnL(): PortfolioPnLSummary {
       returnRate: portfolioReturnRate,
       holdingsCount: holdings.length,
       holdings,
-      dataDate,
-      loading,
+      dataDate: latest.createdAt,
+      loading: portfolioLoading,
+      error: null,
       missingPriceCount,
       missingCostCount,
       calculableHoldingCount,
       hasIncompleteData: missingPriceCount > 0 || missingCostCount > 0,
+      unmatchedSymbols,
     };
-  }, [latest, priceMap, dataDate, loading]);
+  }, [latest, portfolioLoading]);
 
   return result;
 }
