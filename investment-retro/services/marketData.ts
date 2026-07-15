@@ -234,8 +234,13 @@ async function loadJson<T>(fileName: string): Promise<T> {
       throw new Error(`Unknown data file: ${fileName}`);
   }
 
-  dataCache[fileName] = data;
-  return data;
+  // Handle ES module default export wrapping for JSON imports
+  const resolved = (data && typeof data === 'object' && 'default' in data)
+    ? (data as { default: T }).default
+    : data;
+
+  dataCache[fileName] = resolved;
+  return resolved;
 }
 
 // === 公開 API ===

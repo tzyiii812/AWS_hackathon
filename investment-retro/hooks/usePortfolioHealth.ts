@@ -353,23 +353,40 @@ export function usePortfolioHealth(): PortfolioHealth {
 
     // --- 2. Sector Diversification ---
     const industryMap = new Map(industryData.map((i) => [i.股票代號, i]));
+
+    // Helper: detect ETF by symbol pattern (Taiwan ETF: 00xxx, 0050~0059, suffix A/B/L/R)
+    const isEtfByPattern = (symbol: string): boolean => {
+      if (/^00\d{2,4}[ABLR]?$/.test(symbol)) return true;
+      if (/^005[0-9]$/.test(symbol)) return true;
+      return false;
+    };
+
     const holdingIndustries = holdingWeights
       .map((h) => {
         const info = industryMap.get(h.symbol);
+        let industry = info?.主產業 ?? '未分類';
+        // Fallback: if not found in industry data but matches ETF pattern
+        if (industry === '未分類' && isEtfByPattern(h.symbol)) {
+          industry = 'ETF/其他';
+        }
         return {
           symbol: h.symbol,
-          industry: info?.主產業 ?? '未分類',
+          industry,
           weight: h.weight,
         };
       });
     const sectorDiversification = calcSectorScore(holdingIndustries);
 
     // --- 3. ETF Ratio ---
+    // Primary: check industry_classification data
+    // Fallback: Taiwan ETF symbol pattern (00xxx, 0050~0059, or ending with B/L/R)
+    const isEtfSymbol = (symbol: string): boolean => {
+      const info = industryMap.get(symbol);
+      if (info?.主產業 === 'ETF/其他') return true;
+      return isEtfByPattern(symbol);
+    };
     const etfWeight = holdingWeights
-      .filter((h) => {
-        const info = industryMap.get(h.symbol);
-        return info?.主產業 === 'ETF/其他';
-      })
+      .filter((h) => isEtfSymbol(h.symbol))
       .reduce((sum, h) => sum + h.weight, 0);
     const etfRatio = calcEtfRatioScore(etfWeight);
 
