@@ -12,6 +12,13 @@ import {
   getLatestPortfolio,
   PortfolioSnapshot,
 } from '@/services/api';
+import {
+  getStoredValue,
+  setStoredValue,
+  deleteStoredValue,
+} from '@/services/storage';
+
+const CACHE_KEY = 'portfolio_latest';
 
 type PortfolioContextValue = {
   latest: PortfolioSnapshot | null;
@@ -23,11 +30,48 @@ type PortfolioContextValue = {
 
 const PortfolioContext = createContext<PortfolioContextValue | undefined>(undefined);
 
+async function loadCachedPortfolio(): Promise<PortfolioSnapshot | null> {
+  try {
+    const raw = await getStoredValue(CACHE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as PortfolioSnapshot;
+  } catch {
+    return null;
+  }
+}
+
+async function saveCachedPortfolio(portfolio: PortfolioSnapshot | null): Promise<void> {
+  try {
+    if (portfolio) {
+      await setStoredValue(CACHE_KEY, JSON.stringify(portfolio));
+    } else {
+      await deleteStoredValue(CACHE_KEY);
+    }
+  } catch {
+    // 快取寫入失敗不影響正常運作
+  }
+}
+
 export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, getAccessToken } = useAuth();
-  const [latest, setLatest] = useState<PortfolioSnapshot | null>(null);
+  const [latest, setLatestState] = useState<PortfolioSnapshot | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // 包裝 setLatest，同時更新快取
+  const setLatest = useCallback((portfolio: PortfolioSnapshot | null) => {
+    setLatestState(portfolio);
+    saveCachedPortfolio(portfolio);
+  }, []);
+
+  // 啟動時先載入本地快取
+  useEffect(() => {
+    loadCachedPortfolio().then((cached) => {
+      if (cached) {
+        setLatestState(cached);
+      }
+    });
+  }, []);
 
   const refreshLatest = useCallback(async () => {
     if (!isAuthenticated) {
@@ -55,7 +99,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, [isAuthenticated, getAccessToken]);
+  }, [isAuthenticated, getAccessToken, setLatest]);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -64,11 +108,11 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       setLatest(null);
       setError(null);
     }
-  }, [isAuthenticated, refreshLatest]);
+  }, [isAuthenticated, refreshLatest, setLatest]);
 
   const value = useMemo(
     () => ({ latest, loading, error, refreshLatest, setLatest }),
-    [latest, loading, error, refreshLatest]
+    [latest, loading, error, refreshLatest, setLatest]
   );
 
   return <PortfolioContext.Provider value={value}>{children}</PortfolioContext.Provider>;

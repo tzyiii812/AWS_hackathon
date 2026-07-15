@@ -14,9 +14,9 @@ export type PortfolioSnapshot = {
   snapshotId: string;
   yearMonth: string;
   holdings: PortfolioHolding[];
-  totalCost: number;
+  totalCost?: number;
   totalMarketValue: number;
-  totalPnL: number;
+  totalPnL?: number;
   screenshotKeys: string[];
   note: string;
   currency: string;
@@ -214,4 +214,118 @@ export async function getPortfolioHistory(
   }
 
   return apiRequest(`/portfolio/history?${query.toString()}`, accessToken);
+}
+
+export type JournalReport = {
+  title: string;
+  summary: string;
+  goalAndAdvice: string;
+  encouragement: string;
+  closing: string;
+};
+
+export type JournalGenerateResult = {
+  yearMonth: string;
+  portfolio: {
+    totalMarketValue: number;
+    totalPnL: number;
+    holdingsCount: number;
+  };
+  journal: JournalReport;
+  cached: boolean;
+};
+
+export type JournalListItem = {
+  month: string;
+  title: string;
+  closing: string;
+  portfolio: {
+    totalMarketValue: number;
+    totalPnL: number;
+    holdingsCount: number;
+  };
+};
+
+export async function listJournals(
+  accessToken: string
+): Promise<{ journals: JournalListItem[] }> {
+  return apiRequest('/journal/list', accessToken);
+}
+
+export async function generateJournal(
+  accessToken: string,
+  yearMonth: string
+): Promise<JournalGenerateResult> {
+  // Journal 生成需要較長時間（AI 處理），加入 retry 機制
+  const maxRetries = 2;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 55000);
+
+      const headers = new Headers();
+      headers.set('authorization', `Bearer ${accessToken}`);
+      headers.set('accept', 'application/json');
+      headers.set('content-type', 'application/json');
+
+      const response = await fetch(`${APP_CONFIG.apiBaseUrl}/journal/generate`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ yearMonth }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+
+      const text = await response.text();
+      let parsed: unknown = null;
+
+      if (text) {
+        try {
+          parsed = JSON.parse(text);
+        } catch {
+          parsed = text;
+        }
+      }
+
+      // Unwrap Lambda payload if needed
+      if (
+        parsed &&
+        typeof parsed === 'object' &&
+        'statusCode' in parsed &&
+        'body' in parsed &&
+        typeof (parsed as { body?: unknown }).body === 'string'
+      ) {
+        try {
+          parsed = JSON.parse((parsed as { body: string }).body);
+        } catch {
+          // keep parsed as-is
+        }
+      }
+
+      if (!response.ok) {
+        const message =
+          parsed && typeof parsed === 'object' && 'message' in parsed
+            ? String((parsed as { message: unknown }).message)
+            : `月報生成失敗（${response.status}）`;
+        throw new ApiError(response.status, message, parsed);
+      }
+
+      return parsed as JournalGenerateResult;
+    } catch (err) {
+      if (attempt === maxRetries) throw err;
+      // 如果是 timeout 或 5xx，重試
+      if (
+        err instanceof ApiError && err.status >= 500 ||
+        (err instanceof Error && err.name === 'AbortError')
+      ) {
+        await new Promise((r) => setTimeout(r, 2000));
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  throw new ApiError(500, '月報生成失敗，請稍後再試');
 }

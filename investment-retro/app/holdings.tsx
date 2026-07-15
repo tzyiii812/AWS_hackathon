@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React from 'react';
 import {
   ActivityIndicator,
   RefreshControl,
@@ -9,32 +9,23 @@ import {
 import { useRouter } from 'expo-router';
 import { Text, View } from '@/components/Themed';
 import { usePortfolio } from '@/context/PortfolioContext';
+import { usePortfolioPnL } from '@/hooks/usePortfolioPnL';
+
+/**
+ * 公式（由 usePortfolioPnL hook 統一計算）：
+ *   目前市值     = 持有股數 × 目前價格（市場資料 price_valuation_latest.json）
+ *   總成本       = 持有股數 × 平均成本
+ *   未實現損益   = 目前市值 - 總成本
+ *   報酬率       = 未實現損益 ÷ 總成本 × 100%
+ *
+ * 若 shares <= 0 或 avgCost 為 null → 該檔無法計算成本/損益，顯示 "—"
+ * 若 totalCost = 0 → 不計算報酬率（避免除以零）
+ */
 
 export default function HoldingsScreen() {
   const router = useRouter();
   const { latest, loading, error, refreshLatest } = usePortfolio();
-
-  const holdings = useMemo(() => {
-    const total = latest?.totalMarketValue ?? 0;
-
-    return (latest?.holdings ?? []).map((holding) => {
-      const marketValue = holding.marketValue ?? 0;
-      const price = holding.shares > 0 ? marketValue / holding.shares : 0;
-      const pnl = holding.pnl ?? 0;
-      const estimatedCost = marketValue - pnl;
-      const pnlPercent = estimatedCost > 0 ? (pnl / estimatedCost) * 100 : 0;
-      const weight = total > 0 ? (marketValue / total) * 100 : 0;
-
-      return {
-        ...holding,
-        marketValue,
-        price,
-        pnl,
-        pnlPercent,
-        weight,
-      };
-    });
-  }, [latest]);
+  const pnl = usePortfolioPnL();
 
   if (loading && !latest) {
     return (
@@ -75,28 +66,62 @@ export default function HoldingsScreen() {
       <View style={styles.header}>
         <Text style={styles.title}>我的持股</Text>
         <Text style={styles.subtitle}>
-          共 {holdings.length} 檔・更新於{' '}
+          共 {pnl.holdings.length} 檔・更新於{' '}
           {new Date(latest.createdAt).toLocaleDateString('zh-TW')}
         </Text>
       </View>
 
+      {/* Summary Card */}
       <View style={styles.summaryCard}>
         <View style={styles.summaryRow}>
           <View style={styles.summaryItem}>
             <Text style={styles.summaryLabel}>總市值</Text>
             <Text style={styles.summaryValue}>
-              NT${latest.totalMarketValue.toLocaleString('zh-TW')}
+              {pnl.totalMarketValue > 0
+                ? `NT$${pnl.totalMarketValue.toLocaleString('zh-TW')}`
+                : '—'}
             </Text>
           </View>
           <View style={styles.summaryItemRight}>
-            <Text style={styles.summaryLabel}>總損益</Text>
+            <Text style={styles.summaryLabel}>總成本</Text>
+            <Text style={styles.summaryValue}>
+              {pnl.totalCost > 0
+                ? `NT$${pnl.totalCost.toLocaleString('zh-TW')}`
+                : '—'}
+            </Text>
+          </View>
+        </View>
+        <View style={styles.summaryRow}>
+          <View style={styles.summaryItem}>
+            <Text style={styles.summaryLabel}>未實現損益</Text>
             <Text
               style={
-                latest.totalPnL >= 0 ? styles.summaryPositive : styles.summaryNegative
+                pnl.unrealizedPnL != null && pnl.unrealizedPnL >= 0
+                  ? styles.summaryPositive
+                  : pnl.unrealizedPnL != null
+                  ? styles.summaryNegative
+                  : styles.summaryValue
               }
             >
-              {latest.totalPnL >= 0 ? '+' : '-'}NT$
-              {Math.abs(latest.totalPnL).toLocaleString('zh-TW')}
+              {pnl.unrealizedPnL != null
+                ? `${pnl.unrealizedPnL >= 0 ? '+' : ''}NT$${Math.abs(pnl.unrealizedPnL).toLocaleString('zh-TW')}`
+                : '—'}
+            </Text>
+          </View>
+          <View style={styles.summaryItemRight}>
+            <Text style={styles.summaryLabel}>報酬率</Text>
+            <Text
+              style={
+                pnl.returnRate != null && pnl.returnRate >= 0
+                  ? styles.summaryPositive
+                  : pnl.returnRate != null
+                  ? styles.summaryNegative
+                  : styles.summaryValue
+              }
+            >
+              {pnl.returnRate != null
+                ? `${pnl.returnRate >= 0 ? '+' : ''}${pnl.returnRate.toFixed(2)}%`
+                : '—'}
             </Text>
           </View>
         </View>
@@ -105,54 +130,70 @@ export default function HoldingsScreen() {
         ) : null}
       </View>
 
-      {holdings.map((stock, index) => {
-        const positive = stock.pnl >= 0;
-
-        return (
-          <View key={`${stock.symbol}-${index}`} style={styles.stockCard}>
-            <View style={styles.stockTop}>
-              <View style={styles.stockLeft}>
-                <Text style={styles.stockName}>{stock.name || stock.symbol}</Text>
-                <Text style={styles.stockCode}>{stock.symbol}</Text>
-              </View>
-              <View style={styles.stockRight}>
-                <Text style={styles.stockValue}>
-                  NT${stock.marketValue.toLocaleString('zh-TW')}
-                </Text>
-                <Text style={positive ? styles.stockGain : styles.stockLoss}>
-                  {positive ? '+' : ''}{stock.pnlPercent.toFixed(2)}%
-                </Text>
-              </View>
+      {/* Per-stock cards */}
+      {pnl.holdings.map((stock, index) => (
+        <View key={`${stock.symbol}-${index}`} style={styles.stockCard}>
+          <View style={styles.stockTop}>
+            <View style={styles.stockLeft}>
+              <Text style={styles.stockName}>{stock.name || stock.symbol}</Text>
+              <Text style={styles.stockCode}>{stock.symbol}</Text>
             </View>
-            <View style={styles.stockDetails}>
-              <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>持有</Text>
-                <Text style={styles.detailValue}>
-                  {stock.shares.toLocaleString('zh-TW')} 股
+            <View style={styles.stockRight}>
+              <Text style={styles.stockValue}>
+                {stock.hasPriceData
+                  ? `NT$${stock.marketValue.toLocaleString('zh-TW')}`
+                  : '價格未知'}
+              </Text>
+              {stock.returnRate != null ? (
+                <Text
+                  style={stock.returnRate >= 0 ? styles.stockGain : styles.stockLoss}
+                >
+                  {stock.returnRate >= 0 ? '+' : ''}
+                  {stock.returnRate.toFixed(2)}%
                 </Text>
-              </View>
-              <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>成本</Text>
-                <Text style={styles.detailValue}>
-                  {stock.avgCost === null || stock.avgCost === undefined
-                    ? '—'
-                    : `NT$${stock.avgCost.toLocaleString('zh-TW')}`}
-                </Text>
-              </View>
-              <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>估算現價</Text>
-                <Text style={styles.detailValue}>
-                  NT${stock.price.toFixed(2)}
-                </Text>
-              </View>
-              <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>占比</Text>
-                <Text style={styles.detailValue}>{stock.weight.toFixed(1)}%</Text>
-              </View>
+              ) : (
+                <Text style={styles.stockNoData}>—</Text>
+              )}
             </View>
           </View>
-        );
-      })}
+          <View style={styles.stockDetails}>
+            <View style={styles.detailItem}>
+              <Text style={styles.detailLabel}>持有</Text>
+              <Text style={styles.detailValue}>
+                {stock.shares.toLocaleString('zh-TW')} 股
+              </Text>
+            </View>
+            <View style={styles.detailItem}>
+              <Text style={styles.detailLabel}>均價</Text>
+              <Text style={styles.detailValue}>
+                {stock.avgCost != null
+                  ? `NT$${stock.avgCost.toLocaleString('zh-TW')}`
+                  : '—'}
+              </Text>
+            </View>
+            <View style={styles.detailItem}>
+              <Text style={styles.detailLabel}>現價</Text>
+              <Text style={styles.detailValue}>
+                {stock.currentPrice != null && stock.currentPrice > 0
+                  ? `NT$${stock.currentPrice.toFixed(2)}`
+                  : '—'}
+              </Text>
+            </View>
+            <View style={styles.detailItem}>
+              <Text style={styles.detailLabel}>損益</Text>
+              <Text style={styles.detailValue}>
+                {stock.unrealizedPnL != null
+                  ? `${stock.unrealizedPnL >= 0 ? '+' : ''}NT$${Math.abs(stock.unrealizedPnL).toLocaleString('zh-TW')}`
+                  : '—'}
+              </Text>
+            </View>
+            <View style={styles.detailItem}>
+              <Text style={styles.detailLabel}>占比</Text>
+              <Text style={styles.detailValue}>{stock.weight.toFixed(1)}%</Text>
+            </View>
+          </View>
+        </View>
+      ))}
 
       <TouchableOpacity
         style={styles.updateButton}
@@ -213,6 +254,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     backgroundColor: 'transparent',
+    marginBottom: 12,
   },
   summaryItem: { backgroundColor: 'transparent' },
   summaryItemRight: { backgroundColor: 'transparent', alignItems: 'flex-end' },
@@ -247,6 +289,7 @@ const styles = StyleSheet.create({
   stockValue: { fontSize: 16, fontWeight: '500', color: '#222222' },
   stockGain: { fontSize: 14, color: '#86A874', fontWeight: '500', marginTop: 2 },
   stockLoss: { fontSize: 14, color: '#D68E8E', fontWeight: '500', marginTop: 2 },
+  stockNoData: { fontSize: 14, color: '#BBBBBB', marginTop: 2 },
   stockDetails: {
     flexDirection: 'row',
     justifyContent: 'space-between',

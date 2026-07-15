@@ -1,242 +1,186 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, ScrollView } from 'react-native';
 import { Text, View } from '@/components/Themed';
 import { useLocalSearchParams } from 'expo-router';
+import { useAuth } from '@/context/AuthContext';
 import { usePortfolioHistory } from '@/context/PortfolioHistoryContext';
-import { PortfolioSnapshot } from '@/services/api';
+import { generateJournal, JournalReport } from '@/services/api';
+import { calculatePortfolioPnLAtMonth } from '@/services/marketData';
 
-const MONTH_LABELS: Record<string, string> = {
-  '01': 'January 2026',
-  '02': 'February 2026',
-  '03': 'March 2026',
-  '04': 'April 2026',
-  '05': 'May 2026',
-  '06': 'June 2026',
-  '07': 'July 2026',
-  '08': 'August 2026',
-  '09': 'September 2026',
-  '10': 'October 2026',
-  '11': 'November 2026',
-  '12': 'December 2026',
+const MONTH_NAMES: Record<string, string> = {
+  '01': 'January',
+  '02': 'February',
+  '03': 'March',
+  '04': 'April',
+  '05': 'May',
+  '06': 'June',
+  '07': 'July',
+  '08': 'August',
+  '09': 'September',
+  '10': 'October',
+  '11': 'November',
+  '12': 'December',
 };
-
-function getMonthLabel(yearMonth: string): string {
-  const parts = yearMonth.split('-');
-  const month = parts[1];
-  const year = parts[0];
-  const monthName = MONTH_LABELS[month]?.split(' ')[0] || month;
-  return `${monthName} ${year}`;
-}
-
-function getMoodEmoji(pnl: number): string {
-  if (pnl >= 20000) return '🚀';
-  if (pnl >= 10000) return '🎉';
-  if (pnl >= 0) return '😊';
-  if (pnl >= -10000) return '😐';
-  return '😰';
-}
-
-function computeHoldingChanges(
-  current: PortfolioSnapshot,
-  previous: PortfolioSnapshot | null
-) {
-  if (!previous) {
-    return {
-      increased: current.holdings.map((h) => ({
-        symbol: h.symbol,
-        name: h.name || h.symbol,
-        from: 0,
-        to: h.shares,
-      })),
-      decreased: [],
-    };
-  }
-
-  const prevMap = new Map(previous.holdings.map((h) => [h.symbol, h.shares]));
-  const increased: { symbol: string; name: string; from: number; to: number }[] = [];
-  const decreased: { symbol: string; name: string; from: number; to: number }[] = [];
-
-  for (const h of current.holdings) {
-    const prevShares = prevMap.get(h.symbol) ?? 0;
-    if (h.shares > prevShares) {
-      increased.push({ symbol: h.symbol, name: h.name || h.symbol, from: prevShares, to: h.shares });
-    } else if (h.shares < prevShares) {
-      decreased.push({ symbol: h.symbol, name: h.name || h.symbol, from: prevShares, to: h.shares });
-    }
-  }
-
-  // Stocks that were in previous but not in current (sold entirely)
-  for (const h of previous.holdings) {
-    if (!current.holdings.find((c) => c.symbol === h.symbol)) {
-      decreased.push({ symbol: h.symbol, name: h.name || h.symbol, from: h.shares, to: 0 });
-    }
-  }
-
-  return { increased, decreased };
-}
 
 export default function JournalDetailScreen() {
   const { yearMonth } = useLocalSearchParams<{ yearMonth: string }>();
-  const { portfolios, loading } = usePortfolioHistory();
+  const { getAccessToken } = useAuth();
+  const { portfolios } = usePortfolioHistory();
+  const [journal, setJournal] = useState<JournalReport | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const journalData = useMemo(() => {
-    if (!yearMonth || portfolios.length === 0) return null;
+  const month = yearMonth?.slice(5, 7) || '01';
+  const year = yearMonth?.slice(0, 4) || '2025';
+  const monthName = MONTH_NAMES[month] || month;
 
-    const currentIndex = portfolios.findIndex((p) => p.yearMonth === yearMonth);
-    if (currentIndex === -1) return null;
+  // 找對應 snapshot（用該月或之前最近的）
+  const targetMonth = yearMonth?.slice(0, 7) || '';
+  const snapshot =
+    portfolios.find((p) => p.yearMonth.startsWith(targetMonth)) ||
+    portfolios.find((p) => p.yearMonth.slice(0, 7) <= targetMonth);
 
-    const current = portfolios[currentIndex];
-    // Previous month is the next item in the array (sorted newest first)
-    const previous = currentIndex < portfolios.length - 1 ? portfolios[currentIndex + 1] : null;
+  // 使用市場資料計算該月的市值和損益
+  const [marketPnL, setMarketPnL] = useState<{
+    totalMarketValue: number;
+    totalPnL: number;
+    holdingsCount: number;
+  } | null>(null);
 
-    const totalChange = current.totalPnL;
-    const prevMarketValue = previous?.totalMarketValue ?? 0;
-    const marketChange = prevMarketValue > 0
-      ? current.totalMarketValue - prevMarketValue
-      : current.totalMarketValue;
+  useEffect(() => {
+    if (!snapshot || !yearMonth) return;
+    let active = true;
 
-    const holdingChanges = computeHoldingChanges(current, previous);
+    const calcPnL = async () => {
+      try {
+        const holdings = snapshot.holdings.map((h) => ({
+          symbol: h.symbol,
+          shares: h.shares,
+          avgCost: h.avgCost,
+        }));
 
-    return {
-      month: getMonthLabel(current.yearMonth),
-      title: `${getMonthLabel(current.yearMonth).split(' ')[0]} 投資紀錄`,
-      mood: getMoodEmoji(totalChange),
-      summary: `本月持有 ${current.holdings.length} 檔股票，總市值 NT$${current.totalMarketValue.toLocaleString('zh-TW')}，總損益 ${totalChange >= 0 ? '+' : '-'}NT$${Math.abs(totalChange).toLocaleString('zh-TW')}。`,
-      portfolioChange: {
-        totalMarketValue: `NT$${current.totalMarketValue.toLocaleString('zh-TW')}`,
-        totalPnL: `${totalChange >= 0 ? '+' : '-'}NT$${Math.abs(totalChange).toLocaleString('zh-TW')}`,
-        marketChange: previous
-          ? `${marketChange >= 0 ? '+' : '-'}NT$${Math.abs(marketChange).toLocaleString('zh-TW')}`
-          : '—',
-      },
-      holdingChanges,
-      holdings: current.holdings,
-      broker: current.broker,
-      currency: current.currency,
-      note: current.note,
+        if (holdings.length > 0) {
+          const result = await calculatePortfolioPnLAtMonth(
+            yearMonth.slice(0, 7),
+            holdings
+          );
+          if (active && result.dataDate) {
+            setMarketPnL({
+              totalMarketValue: result.totalMarketValue,
+              totalPnL: result.totalPnL,
+              holdingsCount: holdings.length,
+            });
+          }
+        }
+      } catch {
+        // 市場資料不可用，使用 snapshot 原始數據
+      }
     };
-  }, [yearMonth, portfolios]);
 
-  if (loading && portfolios.length === 0) {
+    calcPnL();
+    return () => { active = false; };
+  }, [snapshot, yearMonth]);
+
+  useEffect(() => {
+    if (!yearMonth) return;
+    let active = true;
+
+    const load = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const token = await getAccessToken();
+        const result = await generateJournal(token, yearMonth);
+        if (active) setJournal(result.journal);
+      } catch (e) {
+        if (active) setError(e instanceof Error ? e.message : 'AI 月報生成失敗');
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+
+    load();
+    return () => { active = false; };
+  }, [yearMonth, getAccessToken]);
+
+  if (loading) {
     return (
-      <View style={styles.centerState}>
+      <View style={styles.loadingState}>
         <ActivityIndicator size="large" color="#222222" />
+        <Text style={styles.loadingText}>AI 正在撰寫你的月報…</Text>
+        <Text style={styles.loadingHint}>分析持股與目標中</Text>
       </View>
     );
   }
 
-  if (!journalData) {
+  if (error) {
     return (
-      <View style={styles.centerState}>
-        <Text style={styles.emptyTitle}>找不到這篇月誌</Text>
-        <Text style={styles.emptyText}>可能尚未上傳這個月的投資組合資料。</Text>
+      <View style={styles.loadingState}>
+        <Text style={styles.errorIcon}>⚠️</Text>
+        <Text style={styles.errorText}>{error}</Text>
       </View>
     );
   }
+
+  if (!journal) return null;
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.monthLabel}>{journalData.month}</Text>
-        <Text style={styles.title}>{journalData.title}</Text>
-        <Text style={styles.mood}>{journalData.mood}</Text>
+        <Text style={styles.monthLabel}>{monthName} {year}</Text>
+        <Text style={styles.diaryTitle}>{journal.title}</Text>
       </View>
 
-      {/* Summary */}
-      <View style={styles.card}>
-        <Text style={styles.cardLabel}>本月摘要</Text>
-        <Text style={styles.bodyText}>{journalData.summary}</Text>
-      </View>
-
-      {/* Portfolio Change */}
-      <View style={styles.card}>
-        <Text style={styles.cardLabel}>資產狀況</Text>
-        <View style={styles.dataRow}>
-          <Text style={styles.dataLabel}>總市值</Text>
-          <Text style={styles.dataValue}>{journalData.portfolioChange.totalMarketValue}</Text>
-        </View>
-        <View style={styles.dataRow}>
-          <Text style={styles.dataLabel}>總損益</Text>
-          <Text style={journalData.holdings.length > 0 ? styles.dataGreen : styles.dataValue}>
-            {journalData.portfolioChange.totalPnL}
+      {/* 帳戶快照 */}
+      {snapshot && (
+        <View style={styles.snapshotCard}>
+          <View style={styles.snapshotRow}>
+            <View style={styles.snapshotItem}>
+              <Text style={styles.snapshotValue}>
+                NT${(marketPnL?.totalMarketValue ?? snapshot.totalMarketValue).toLocaleString('zh-TW')}
+              </Text>
+              <Text style={styles.snapshotLabel}>總市值</Text>
+            </View>
+            <View style={styles.snapshotItem}>
+              <Text style={[styles.snapshotValue, (marketPnL?.totalPnL ?? snapshot.totalPnL ?? 0) >= 0 ? styles.pnlGreen : styles.pnlRed]}>
+                {(marketPnL?.totalPnL ?? snapshot.totalPnL ?? 0) >= 0 ? '+' : '-'}NT${Math.abs(marketPnL?.totalPnL ?? snapshot.totalPnL ?? 0).toLocaleString('zh-TW')}
+              </Text>
+              <Text style={styles.snapshotLabel}>損益</Text>
+            </View>
+          </View>
+          <Text style={styles.snapshotMeta}>
+            {snapshot.holdings.length} 檔持股{snapshot.broker ? `・${snapshot.broker}` : ''}
           </Text>
-        </View>
-        <View style={styles.dataRowLast}>
-          <Text style={styles.dataLabel}>較上月市值變化</Text>
-          <Text style={styles.dataGreen}>{journalData.portfolioChange.marketChange}</Text>
-        </View>
-      </View>
-
-      {/* Holding Changes */}
-      {(journalData.holdingChanges.increased.length > 0 ||
-        journalData.holdingChanges.decreased.length > 0) && (
-        <View style={styles.card}>
-          <Text style={styles.cardLabel}>持股變化</Text>
-          {journalData.holdingChanges.increased.length > 0 && (
-            <View style={styles.changeGroup}>
-              <Text style={styles.changeLabel}>📈 增加</Text>
-              {journalData.holdingChanges.increased.map((item, i) => (
-                <Text key={i} style={styles.changeItem}>
-                  {item.name}：{item.from.toLocaleString('zh-TW')} → {item.to.toLocaleString('zh-TW')} 股
-                </Text>
-              ))}
-            </View>
-          )}
-          {journalData.holdingChanges.decreased.length > 0 && (
-            <View style={styles.changeGroup}>
-              <Text style={styles.changeLabelNeg}>📉 減少</Text>
-              {journalData.holdingChanges.decreased.map((item, i) => (
-                <Text key={i} style={styles.changeItem}>
-                  {item.name}：{item.from.toLocaleString('zh-TW')} → {item.to.toLocaleString('zh-TW')} 股
-                </Text>
-              ))}
-            </View>
-          )}
         </View>
       )}
 
-      {/* Current Holdings */}
-      <View style={styles.card}>
-        <Text style={styles.cardLabel}>持有股票（{journalData.holdings.length} 檔）</Text>
-        {journalData.holdings.map((stock, index) => {
-          const marketValue = stock.marketValue ?? 0;
-          const pnl = stock.pnl ?? 0;
-
-          return (
-            <View
-              key={`${stock.symbol}-${index}`}
-              style={index === journalData.holdings.length - 1 ? styles.holdingItemLast : styles.holdingItem}
-            >
-              <View style={styles.holdingLeft}>
-                <Text style={styles.holdingName}>{stock.name || stock.symbol}</Text>
-                <Text style={styles.holdingCode}>{stock.symbol}・{stock.shares.toLocaleString('zh-TW')} 股</Text>
-              </View>
-              <View style={styles.holdingRight}>
-                <Text style={styles.holdingValue}>NT${marketValue.toLocaleString('zh-TW')}</Text>
-                <Text style={pnl >= 0 ? styles.holdingGain : styles.holdingLoss}>
-                  {pnl >= 0 ? '+' : '-'}NT${Math.abs(pnl).toLocaleString('zh-TW')}
-                </Text>
-              </View>
-            </View>
-          );
-        })}
+      {/* 月度回顧 */}
+      <View style={styles.diarySection}>
+        <Text style={styles.diaryBody}>{journal.summary}</Text>
       </View>
 
-      {/* Note */}
-      {journalData.note ? (
-        <View style={styles.card}>
-          <Text style={styles.cardLabel}>我的筆記</Text>
-          <Text style={styles.noteText}>{journalData.note}</Text>
-        </View>
-      ) : null}
+      {/* 目標與建議（故事感） */}
+      <View style={styles.storyCard}>
+        <Text style={styles.storyIcon}>🎯</Text>
+        <Text style={styles.storyBody}>{journal.goalAndAdvice}</Text>
+      </View>
 
-      {/* Broker info */}
-      {journalData.broker ? (
-        <View style={styles.metaCard}>
-          <Text style={styles.metaText}>
-            {journalData.broker}・{journalData.currency}
-          </Text>
+      {/* 鼓勵 */}
+      <View style={styles.encourageCard}>
+        <Text style={styles.encourageText}>{journal.encouragement}</Text>
+      </View>
+
+      {/* 結語 */}
+      <View style={styles.closingCard}>
+        <Text style={styles.closingQuote}>「{journal.closing}」</Text>
+      </View>
+
+      {/* 筆記 */}
+      {snapshot?.note ? (
+        <View style={styles.noteSection}>
+          <Text style={styles.noteLabel}>✏️ 我的筆記</Text>
+          <Text style={styles.noteText}>{snapshot.note}</Text>
         </View>
       ) : null}
 
@@ -247,64 +191,56 @@ export default function JournalDetailScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FAF9F7' },
-  centerState: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 28,
-    backgroundColor: '#FAF9F7',
+
+  loadingState: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28, backgroundColor: '#FAF9F7' },
+  loadingText: { fontSize: 17, color: '#222222', fontWeight: '500', marginTop: 20 },
+  loadingHint: { fontSize: 14, color: '#AAAAAA', marginTop: 8 },
+  errorIcon: { fontSize: 40, marginBottom: 12 },
+  errorText: { fontSize: 15, color: '#A95454', textAlign: 'center', lineHeight: 22 },
+
+  header: { padding: 24, paddingBottom: 8, backgroundColor: 'transparent' },
+  monthLabel: { fontSize: 14, color: '#B6C9A8', fontWeight: '600', letterSpacing: 1, marginBottom: 8 },
+  diaryTitle: { fontSize: 26, fontWeight: '600', color: '#222222', lineHeight: 34 },
+
+  snapshotCard: {
+    backgroundColor: '#2C2C2E', marginHorizontal: 20, marginTop: 16, marginBottom: 28,
+    padding: 20, borderRadius: 20,
   },
-  emptyTitle: { fontSize: 22, fontWeight: '600', color: '#222222' },
-  emptyText: { fontSize: 15, color: '#888888', marginTop: 10, textAlign: 'center' },
-  header: { padding: 24, paddingBottom: 16, backgroundColor: 'transparent' },
-  monthLabel: { fontSize: 14, color: '#B6C9A8', fontWeight: '600', marginBottom: 4 },
-  title: { fontSize: 26, fontWeight: '600', color: '#222222' },
-  mood: { fontSize: 24, marginTop: 8 },
-  card: {
-    backgroundColor: '#FFFFFF', marginHorizontal: 20, marginBottom: 16,
-    padding: 24, borderRadius: 24,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04, shadowRadius: 10, elevation: 2,
+  snapshotRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12, backgroundColor: 'transparent' },
+  snapshotItem: { backgroundColor: 'transparent' },
+  snapshotValue: { fontSize: 20, fontWeight: '600', color: '#FFFFFF' },
+  snapshotLabel: { fontSize: 11, color: 'rgba(255,255,255,0.5)', marginTop: 4 },
+  snapshotMeta: { fontSize: 12, color: 'rgba(255,255,255,0.4)' },
+  pnlGreen: { color: '#B6C9A8' },
+  pnlRed: { color: '#E8A8A8' },
+
+  diarySection: { paddingHorizontal: 24, marginBottom: 24, backgroundColor: 'transparent' },
+  diaryBody: { fontSize: 16, color: '#444444', lineHeight: 28 },
+
+  storyCard: {
+    backgroundColor: '#FFFFFF', marginHorizontal: 20, marginBottom: 20, padding: 24, borderRadius: 20,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.03, shadowRadius: 8, elevation: 1,
   },
-  cardLabel: { fontSize: 13, color: '#888888', marginBottom: 12, letterSpacing: 0.5 },
-  bodyText: { fontSize: 15, color: '#555555', lineHeight: 24 },
-  dataRow: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#F4F1ED',
-    backgroundColor: 'transparent',
+  storyIcon: { fontSize: 22, marginBottom: 10 },
+  storyBody: { fontSize: 15, color: '#444444', lineHeight: 26 },
+
+  encourageCard: {
+    marginHorizontal: 20, marginBottom: 20, padding: 22,
+    backgroundColor: '#FFFFFF', borderRadius: 20,
+    borderLeftWidth: 4, borderLeftColor: '#B6C9A8',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.03, shadowRadius: 8, elevation: 1,
   },
-  dataRowLast: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    paddingVertical: 10, backgroundColor: 'transparent',
+  encourageText: { fontSize: 15, color: '#555555', lineHeight: 26, fontStyle: 'italic' },
+
+  closingCard: {
+    backgroundColor: '#2C2C2E', marginHorizontal: 20, marginBottom: 20,
+    padding: 28, borderRadius: 20, alignItems: 'center',
   },
-  dataLabel: { fontSize: 15, color: '#555555' },
-  dataValue: { fontSize: 15, fontWeight: '500', color: '#222222' },
-  dataGreen: { fontSize: 15, fontWeight: '500', color: '#B6C9A8' },
-  changeGroup: { marginBottom: 14, backgroundColor: 'transparent' },
-  changeLabel: { fontSize: 14, fontWeight: '600', color: '#B6C9A8', marginBottom: 6 },
-  changeLabelNeg: { fontSize: 14, fontWeight: '600', color: '#E8A8A8', marginBottom: 6 },
-  changeItem: { fontSize: 15, color: '#555555', paddingVertical: 3, paddingLeft: 4 },
-  holdingItem: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#F4F1ED',
-    backgroundColor: 'transparent',
-  },
-  holdingItemLast: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingVertical: 14, backgroundColor: 'transparent',
-  },
-  holdingLeft: { backgroundColor: 'transparent', flex: 1 },
-  holdingRight: { alignItems: 'flex-end', backgroundColor: 'transparent' },
-  holdingName: { fontSize: 16, fontWeight: '500', color: '#222222' },
-  holdingCode: { fontSize: 13, color: '#BBBBBB', marginTop: 2 },
-  holdingValue: { fontSize: 15, color: '#222222' },
-  holdingGain: { fontSize: 13, color: '#86A874', fontWeight: '500', marginTop: 2 },
-  holdingLoss: { fontSize: 13, color: '#D68E8E', fontWeight: '500', marginTop: 2 },
+  closingQuote: { fontSize: 17, color: 'rgba(255,255,255,0.85)', lineHeight: 28, textAlign: 'center', fontStyle: 'italic' },
+
+  noteSection: { paddingHorizontal: 24, marginBottom: 20, backgroundColor: 'transparent' },
+  noteLabel: { fontSize: 13, color: '#888888', marginBottom: 8 },
   noteText: { fontSize: 15, color: '#555555', lineHeight: 24, fontStyle: 'italic' },
-  metaCard: {
-    marginHorizontal: 20, marginBottom: 16, padding: 16,
-    backgroundColor: '#F4F1ED', borderRadius: 16, alignItems: 'center',
-  },
-  metaText: { fontSize: 13, color: '#AAAAAA' },
+
   bottomPadding: { height: 40, backgroundColor: 'transparent' },
 });

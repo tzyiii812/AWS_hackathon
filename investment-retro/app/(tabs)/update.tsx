@@ -114,22 +114,22 @@ export default function UpdatePortfolioScreen() {
     [parsedHoldings]
   );
 
+  // 嚴格公式：totalCost = Σ (shares × avgCost)，只計入有 avgCost 且 shares > 0 的股票
   const totalCost = useMemo(
     () =>
-      parsedHoldings.reduce(
-        (sum, holding) => sum + (holding.avgCost != null ? holding.avgCost * holding.shares : 0),
-        0
-      ),
+      parsedHoldings.reduce((sum, h) => {
+        if (h.avgCost != null && h.shares > 0) {
+          return sum + h.avgCost * h.shares;
+        }
+        return sum;
+      }, 0),
     [parsedHoldings]
   );
 
+  // 嚴格公式：totalPnL = totalMarketValue - totalCost（未實現損益）
   const totalPnL = useMemo(
-    () =>
-      parsedHoldings.reduce(
-        (sum, holding) => sum + (holding.pnl ?? 0),
-        0
-      ),
-    [parsedHoldings]
+    () => (totalCost > 0 ? totalMarketValue - totalCost : 0),
+    [totalMarketValue, totalCost]
   );
 
   const comparison = useMemo(() => {
@@ -356,6 +356,8 @@ export default function UpdatePortfolioScreen() {
         currency,
         broker,
         totalMarketValue,
+        totalCost,
+        totalPnL,
       });
 
       setLatest(result.portfolio);

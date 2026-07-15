@@ -1,11 +1,22 @@
+import React from 'react';
 import { StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { Text, View } from '@/components/Themed';
 import { useRouter } from 'expo-router';
 import { usePortfolio } from '@/context/PortfolioContext';
+import { usePortfolioPnL } from '@/hooks/usePortfolioPnL';
+
+/**
+ * 公式（與 Home、Holdings 完全一致，由 usePortfolioPnL hook 統一計算）：
+ *   目前市值     = 持有股數 × 目前價格（市場資料）
+ *   總成本       = 持有股數 × 平均成本
+ *   未實現損益   = 目前市值 - 總成本
+ *   未實現報酬率 = 未實現損益 ÷ 總成本 × 100%
+ */
 
 export default function InsightsScreen() {
   const router = useRouter();
   const { latest } = usePortfolio();
+  const pnl = usePortfolioPnL();
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
@@ -42,13 +53,23 @@ export default function InsightsScreen() {
           <View style={styles.card}>
             <Text style={styles.cardLabel}>Portfolio Snapshot</Text>
             <Text style={styles.marketValue}>
-              NT${latest.totalMarketValue.toLocaleString('zh-TW')}
+              {pnl.totalMarketValue > 0
+                ? `NT$${pnl.totalMarketValue.toLocaleString('zh-TW')}`
+                : '—'}
             </Text>
             <Text
-              style={latest.totalPnL >= 0 ? styles.positiveText : styles.negativeText}
+              style={
+                (pnl.unrealizedPnL ?? 0) >= 0
+                  ? styles.positiveText
+                  : styles.negativeText
+              }
             >
-              {latest.totalPnL >= 0 ? '+' : '-'}NT$
-              {Math.abs(latest.totalPnL).toLocaleString('zh-TW')} 總損益
+              {pnl.unrealizedPnL != null
+                ? `${pnl.unrealizedPnL >= 0 ? '+' : ''}NT$${Math.abs(pnl.unrealizedPnL).toLocaleString('zh-TW')} 未實現損益`
+                : '未實現損益 —'}
+              {pnl.returnRate != null
+                ? ` (${pnl.returnRate >= 0 ? '+' : ''}${pnl.returnRate.toFixed(2)}%)`
+                : ''}
             </Text>
             <Text style={styles.snapshotMeta}>
               {latest.holdings.length} 檔・{latest.broker || '券商未辨識'}・{latest.yearMonth}
@@ -56,17 +77,13 @@ export default function InsightsScreen() {
           </View>
 
           <View style={styles.card}>
-            <Text style={styles.cardLabel}>我的持股（{latest.holdings.length} 檔）</Text>
+            <Text style={styles.cardLabel}>我的持股（{pnl.holdings.length} 檔）</Text>
 
-            {latest.holdings.map((stock, index) => {
-              const marketValue = stock.marketValue ?? 0;
-              const pnl = stock.pnl ?? 0;
-
-              return (
+            {pnl.holdings.map((stock, index) => (
                 <View
                   key={`${stock.symbol}-${index}`}
                   style={
-                    index === latest.holdings.length - 1
+                    index === pnl.holdings.length - 1
                       ? styles.holdingItemLast
                       : styles.holdingItem
                   }
@@ -77,15 +94,20 @@ export default function InsightsScreen() {
                   </View>
                   <View style={styles.holdingRight}>
                     <Text style={styles.holdingValue}>
-                      NT${marketValue.toLocaleString('zh-TW')}
+                      {stock.hasPriceData
+                        ? `NT$${stock.marketValue.toLocaleString('zh-TW')}`
+                        : '價格未知'}
                     </Text>
-                    <Text style={pnl >= 0 ? styles.holdingGain : styles.holdingLoss}>
-                      {pnl >= 0 ? '+' : '-'}NT${Math.abs(pnl).toLocaleString('zh-TW')}
-                    </Text>
+                    {stock.unrealizedPnL != null ? (
+                      <Text style={stock.unrealizedPnL >= 0 ? styles.holdingGain : styles.holdingLoss}>
+                        {stock.unrealizedPnL >= 0 ? '+' : ''}NT${Math.abs(stock.unrealizedPnL).toLocaleString('zh-TW')}
+                      </Text>
+                    ) : (
+                      <Text style={styles.holdingNoData}>損益 —</Text>
+                    )}
                   </View>
                 </View>
-              );
-            })}
+            ))}
           </View>
         </>
       )}
@@ -162,5 +184,6 @@ const styles = StyleSheet.create({
   holdingValue: { fontSize: 15, color: '#222222' },
   holdingGain: { fontSize: 13, color: '#86A874', fontWeight: '500', marginTop: 2 },
   holdingLoss: { fontSize: 13, color: '#D68E8E', fontWeight: '500', marginTop: 2 },
+  holdingNoData: { fontSize: 13, color: '#BBBBBB', marginTop: 2 },
   bottomPadding: { height: 40, backgroundColor: 'transparent' },
 });

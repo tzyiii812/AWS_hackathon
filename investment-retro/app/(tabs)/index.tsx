@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import {
   StyleSheet,
   ScrollView,
@@ -10,24 +10,28 @@ import { useRouter } from 'expo-router';
 import { useAuth } from '@/context/AuthContext';
 import { useGoals } from '@/context/GoalContext';
 import { usePortfolio } from '@/context/PortfolioContext';
-import { usePortfolioHistory } from '@/context/PortfolioHistoryContext';
+import { usePortfolioPnL } from '@/hooks/usePortfolioPnL';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_WIDTH = SCREEN_WIDTH - 40;
 const CARD_HEIGHT = 200;
 
-const AI_FEED = [
-  { id: '1', icon: '📈', title: '台積電近期波動增加', content: '它占你投資組合的 24%，波動會直接影響你的目標進度。' },
-  { id: '2', icon: '🎯', title: '東京旅行目標可能提前完成', content: '最近三個月的平均投入比前半年增加了 18%。' },
-  { id: '3', icon: '🏆', title: '連續 8 個月維持定期投入', content: '即使市場下跌，你的投入方式也沒有改變。' },
+const PLACEHOLDER_TIPS = [
+  { id: '1', icon: '💡', title: '試試問 AI', content: '上傳持股截圖後，AI 可以分析你的投資組合配置。' },
+  { id: '2', icon: '📊', title: '持續追蹤', content: '定期更新持股，才能看到報酬趨勢和進度。' },
 ];
 
 export default function HomeScreen() {
   const router = useRouter();
+  const { session } = useAuth();
   const { activeGoals, completeGoal, totalTarget, completedCount } = useGoals();
   const { latest } = usePortfolio();
-  const portfolioValue = latest?.totalMarketValue ?? 0;
+  const pnl = usePortfolioPnL();
+  const portfolioValue = pnl.totalMarketValue;
   const [cardIndex, setCardIndex] = useState(0);
+
+  // 從 usePortfolioPnL hook 取得計算結果
+  const { unrealizedPnL, returnRate } = pnl;
 
   // Total cards: 1 overview + N goals
   const totalCards = 1 + activeGoals.length;
@@ -85,7 +89,7 @@ export default function HomeScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.greeting}>Good Evening,</Text>
-        <Text style={styles.name}>子珆 🌱</Text>
+        <Text style={styles.name}>{session?.username ?? 'Investor'} 🌱</Text>
       </View>
 
       {/* Goal Carousel */}
@@ -125,17 +129,21 @@ export default function HomeScreen() {
         {latest ? (
           <>
             <Text style={styles.portfolioValue}>
-              NT${latest.totalMarketValue.toLocaleString('zh-TW')}
+              {pnl.totalMarketValue > 0
+                ? `NT$${pnl.totalMarketValue.toLocaleString('zh-TW')}`
+                : '—'}
             </Text>
             <Text
               style={
-                latest.totalPnL >= 0
+                (unrealizedPnL ?? 0) >= 0
                   ? styles.portfolioGain
                   : styles.portfolioLoss
               }
             >
-              {latest.totalPnL >= 0 ? '+' : '-'}NT$
-              {Math.abs(latest.totalPnL).toLocaleString('zh-TW')}
+              {unrealizedPnL != null
+                ? `${unrealizedPnL >= 0 ? '+' : ''}NT$${Math.abs(unrealizedPnL).toLocaleString('zh-TW')}`
+                : '—'}
+              {returnRate != null ? ` (${returnRate >= 0 ? '+' : ''}${returnRate.toFixed(2)}%)` : ''}
             </Text>
             <Text style={styles.portfolioMeta}>
               持有 {latest.holdings.length} 檔股票・{latest.yearMonth}
@@ -151,42 +159,29 @@ export default function HomeScreen() {
         )}
       </TouchableOpacity>
 
-      {/* AI Feed */}
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>For You ✨</Text>
-      </View>
+      {/* Tips */}
+      {latest && (
+        <>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>For You</Text>
+          </View>
 
-      {AI_FEED.map((item) => (
-        <View key={item.id} style={styles.feedCard}>
-          <Text style={styles.feedItemIcon}>{item.icon}</Text>
-          <Text style={styles.feedTitle}>{item.title}</Text>
-          <Text style={styles.feedContent}>{item.content}</Text>
-          <TouchableOpacity style={styles.feedAction} onPress={() => router.push('/ask-ai')}>
-            <Text style={styles.feedActionText}>問 AI 更多 →</Text>
-          </TouchableOpacity>
-        </View>
-      ))}
+          {PLACEHOLDER_TIPS.map((item) => (
+            <View key={item.id} style={styles.feedCard}>
+              <Text style={styles.feedItemIcon}>{item.icon}</Text>
+              <Text style={styles.feedTitle}>{item.title}</Text>
+              <Text style={styles.feedContent}>{item.content}</Text>
+              <TouchableOpacity style={styles.feedAction} onPress={() => router.push('/ask-ai')}>
+                <Text style={styles.feedActionText}>問 AI 更多 →</Text>
+              </TouchableOpacity>
+            </View>
+          ))}
+        </>
+      )}
 
-      {/* Memory */}
-      <View style={styles.memoryCard}>
-        <Text style={styles.memoryLabel}>去年今天</Text>
-        <Text style={styles.memoryText}>
-          東京旅行基金只有 31%。{'\n'}現在已經來到 73%。
-        </Text>
-      </View>
+      {/* Memory — 未來接真實歷史對比資料後啟用 */}
 
-      {/* Recent Journal */}
-      <TouchableOpacity
-        style={styles.card}
-        onPress={() => router.push({ pathname: '/journal-detail', params: { yearMonth: '2026-07' } })}
-        activeOpacity={0.8}
-      >
-        <Text style={styles.cardLabel}>最近月誌</Text>
-        <Text style={styles.journalTitle}>維持投入的一個月</Text>
-        <Text style={styles.journalBody}>這個月沒有太多交易，但維持了原本的投入計畫。</Text>
-        <Text style={styles.journalMeta}>資產 +NT$18,200 ・ 東京旅行 68% → 73%</Text>
-        <Text style={styles.readMore}>閱讀完整月誌 →</Text>
-      </TouchableOpacity>
+      {/* Recent Journal — 未來接 journal 資料後啟用 */}
 
       <View style={styles.bottomPadding} />
     </ScrollView>
@@ -312,16 +307,7 @@ const styles = StyleSheet.create({
   feedAction: { marginTop: 14 },
   feedActionText: { fontSize: 14, color: '#AFC8E8', fontWeight: '500' },
 
-  // Memory
-  memoryCard: { backgroundColor: '#F8F3EC', marginHorizontal: 20, marginBottom: 16, padding: 20, borderRadius: 20 },
-  memoryLabel: { fontSize: 13, color: '#C8B6A6', fontWeight: '600', marginBottom: 8 },
-  memoryText: { fontSize: 16, color: '#555555', lineHeight: 24 },
-
-  // Journal
-  journalTitle: { fontSize: 20, fontWeight: '600', color: '#222222', marginBottom: 8 },
-  journalBody: { fontSize: 15, color: '#555555', lineHeight: 22, marginBottom: 8 },
-  journalMeta: { fontSize: 13, color: '#888888' },
-  readMore: { fontSize: 14, color: '#AFC8E8', fontWeight: '500', marginTop: 14 },
+  // (reserved for future memory / journal cards)
 
   bottomPadding: { height: 40, backgroundColor: 'transparent' },
 });

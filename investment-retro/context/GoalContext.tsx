@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
+import { APP_TODAY_ISO } from '@/config/appDate';
 
 export type Goal = {
   id: string;
@@ -42,7 +43,7 @@ export function GoalProvider({ children }: { children: React.ReactNode }) {
       targetAmount: 65000,
       description: '',
       completed: false,
-      createdAt: '2026-01-15',
+      createdAt: '2025-10-15',
     },
     {
       id: '3',
@@ -51,7 +52,7 @@ export function GoalProvider({ children }: { children: React.ReactNode }) {
       targetAmount: 2000000,
       description: '在台北買一間小公寓',
       completed: false,
-      createdAt: '2026-03-01',
+      createdAt: '2025-06-01',
     },
   ]);
 
@@ -60,7 +61,7 @@ export function GoalProvider({ children }: { children: React.ReactNode }) {
       ...goal,
       id: Date.now().toString(),
       completed: false,
-      createdAt: new Date().toISOString().split('T')[0],
+      createdAt: APP_TODAY_ISO,
     };
     setGoals((prev) => [...prev, newGoal]);
   }, []);
