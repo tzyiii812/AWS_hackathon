@@ -59,13 +59,23 @@ function friendlyMessage(code: string, fallback: string) {
       return '嘗試次數太多，請稍後再試。';
     case 'InvalidParameterException':
       return '登入資料格式不正確。';
+    case 'UsernameExistsException':
+      return '這個 Email 已經被註冊了。';
+    case 'InvalidPasswordException':
+      return '密碼格式不符合要求（至少 8 個字元，包含大小寫和數字）。';
+    case 'CodeMismatchException':
+      return '驗證碼不正確，請再試一次。';
+    case 'ExpiredCodeException':
+      return '驗證碼已過期，請重新發送。';
+    case 'LimitExceededException':
+      return '嘗試次數過多，請稍後再試。';
     default:
       return fallback || 'Cognito 驗證失敗。';
   }
 }
 
 async function cognitoRequest(
-  target: 'InitiateAuth' | 'RespondToAuthChallenge',
+  target: 'InitiateAuth' | 'RespondToAuthChallenge' | 'SignUp' | 'ConfirmSignUp' | 'ResendConfirmationCode',
   body: Record<string, unknown>
 ): Promise<CognitoAuthResponse> {
   const response = await fetch(COGNITO_ENDPOINT, {
@@ -176,4 +186,97 @@ export async function refreshAuthSession(session: AuthSession): Promise<AuthSess
   }
 
   return toSession(data.AuthenticationResult, session.username, session.refreshToken);
+}
+
+// === Sign Up ===
+
+/**
+ * Sign up a new user.
+ * Since the User Pool uses email as username, the caller should pass
+ * a valid email format (can be fake like "user@inv.local").
+ * Auto-confirms the user via admin API workaround since email verification is disabled.
+ */
+export async function signUp(
+  username: string,
+  password: string
+): Promise<{ userConfirmed: boolean; username: string }> {
+  // Ensure username looks like an email (Cognito requirement)
+  const email = username.includes('@') ? username : `${username}@inv.local`;
+
+  const response = await fetch(COGNITO_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-amz-json-1.1',
+      'x-amz-target': 'AWSCognitoIdentityProviderService.SignUp',
+    },
+    body: JSON.stringify({
+      ClientId: APP_CONFIG.cognitoClientId,
+      Username: email,
+      Password: password,
+      UserAttributes: [
+        { Name: 'email', Value: email },
+      ],
+    }),
+  });
+
+  const text = await response.text();
+  const data = text ? JSON.parse(text) : {};
+
+  if (!response.ok) {
+    const code = (data.__type ?? 'CognitoError').split('#').pop() ?? 'CognitoError';
+    throw new CognitoError(friendlyMessage(code, data.message ?? ''), code);
+  }
+
+  return {
+    userConfirmed: data.UserConfirmed ?? false,
+    username: email,
+  };
+}
+
+export async function confirmSignUp(
+  email: string,
+  code: string
+): Promise<void> {
+  const response = await fetch(COGNITO_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-amz-json-1.1',
+      'x-amz-target': 'AWSCognitoIdentityProviderService.ConfirmSignUp',
+    },
+    body: JSON.stringify({
+      ClientId: APP_CONFIG.cognitoClientId,
+      Username: email,
+      ConfirmationCode: code,
+    }),
+  });
+
+  const text = await response.text();
+  const data = text ? JSON.parse(text) : {};
+
+  if (!response.ok) {
+    const errCode = (data.__type ?? 'CognitoError').split('#').pop() ?? 'CognitoError';
+    throw new CognitoError(friendlyMessage(errCode, data.message ?? ''), errCode);
+  }
+}
+
+export async function resendConfirmationCode(email: string): Promise<void> {
+  const response = await fetch(COGNITO_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-amz-json-1.1',
+      'x-amz-target': 'AWSCognitoIdentityProviderService.ResendConfirmationCode',
+    },
+    body: JSON.stringify({
+      ClientId: APP_CONFIG.cognitoClientId,
+      Username: email,
+    }),
+  });
+
+  const text = await response.text();
+  const data = text ? JSON.parse(text) : {};
+
+  if (!response.ok) {
+    const errCode = (data.__type ?? 'CognitoError').split('#').pop() ?? 'CognitoError';
+    throw new CognitoError(friendlyMessage(errCode, data.message ?? ''), errCode);
+  }
 }

@@ -4,7 +4,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Dimensions,
 } from 'react-native';
 import { Text, View } from '@/components/Themed';
 import { useRouter } from 'expo-router';
@@ -16,9 +15,6 @@ import { usePortfolioPnL } from '@/hooks/usePortfolioPnL';
 import { useRealizedPnL } from '@/hooks/useRealizedPnL';
 import { getImageReadUrl } from '@/services/api';
 import { AIProfileCard } from '@/components/ai-profile';
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const CARD_WIDTH = SCREEN_WIDTH - 40;
 
 const PLACEHOLDER_TIPS = [
   { id: '1', icon: '💡', title: '試試問 AI', content: '上傳持股截圖後，AI 可以分析你的投資組合配置。' },
@@ -451,15 +447,16 @@ const styles = StyleSheet.create({
   // Carousel
   carouselWrapper: {
     marginTop: 16,
-    marginHorizontal: SCREEN_WIDTH > 500 ? 20 : 20,
+    marginHorizontal: 20,
+    marginBottom: 0,
     position: 'relative',
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
     backgroundColor: 'transparent',
   },
   goalCard: {
-    width: CARD_WIDTH,
-    minHeight: 160,
+    flex: 1,
+    minHeight: 140,
     backgroundColor: '#FFFFFF',
     borderRadius: 24,
     padding: 24,
@@ -471,8 +468,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   goalCardWithImage: {
-    width: CARD_WIDTH,
-    minHeight: 160,
+    flex: 1,
+    minHeight: 140,
     borderRadius: 24,
     overflow: 'hidden',
     shadowColor: '#000',

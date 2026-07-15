@@ -13,6 +13,9 @@ import {
   NewPasswordChallenge,
   refreshAuthSession,
   signInWithPassword,
+  signUp as cognitoSignUp,
+  confirmSignUp as cognitoConfirmSignUp,
+  resendConfirmationCode as cognitoResendCode,
 } from '@/services/cognito';
 import {
   deleteStoredValue,
@@ -32,6 +35,9 @@ type AuthContextValue = {
     challenge: NewPasswordChallenge,
     newPassword: string
   ) => Promise<void>;
+  signUp: (email: string, password: string) => Promise<{ userConfirmed: boolean }>;
+  confirmSignUp: (email: string, code: string) => Promise<void>;
+  resendConfirmationCode: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
   getAccessToken: () => Promise<string>;
 };
@@ -146,6 +152,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await persistSession(null);
   }, [persistSession]);
 
+  const signUp = useCallback(async (email: string, password: string) => {
+    return cognitoSignUp(email, password);
+  }, []);
+
+  const confirmSignUp = useCallback(async (email: string, code: string) => {
+    await cognitoConfirmSignUp(email, code);
+  }, []);
+
+  const resendConfirmationCode = useCallback(async (email: string) => {
+    await cognitoResendCode(email);
+  }, []);
+
   const getAccessToken = useCallback(async () => {
     const current = sessionRef.current;
 
@@ -168,10 +186,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isAuthenticated: Boolean(session),
       signIn,
       completeNewPassword,
+      signUp,
+      confirmSignUp,
+      resendConfirmationCode,
       signOut,
       getAccessToken,
     }),
-    [session, initializing, signIn, completeNewPassword, signOut, getAccessToken]
+    [session, initializing, signIn, completeNewPassword, signUp, confirmSignUp, resendConfirmationCode, signOut, getAccessToken]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

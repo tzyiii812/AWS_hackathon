@@ -12,18 +12,26 @@ import { Text, View } from '@/components/Themed';
 import { useAuth } from '@/context/AuthContext';
 import { NewPasswordChallenge } from '@/services/cognito';
 
+type Screen = 'login' | 'register' | 'newPassword';
+
 export default function LoginScreen() {
-  const { signIn, completeNewPassword } = useAuth();
-  const [email, setEmail] = useState('');
+  const { signIn, completeNewPassword, signUp } = useAuth();
+  const [screen, setScreen] = useState<Screen>('login');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPwd, setConfirmPwd] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [challenge, setChallenge] = useState<NewPasswordChallenge | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
+
+  // Normalize username to email format for Cognito
+  const toEmail = (name: string) => name.includes('@') ? name : `${name}@inv.local`;
 
   const handleSignIn = async () => {
-    if (!email.trim() || !password) {
-      setError('請輸入 Email 和密碼。');
+    if (!username.trim() || !password) {
+      setError('請輸入帳號和密碼。');
       return;
     }
 
@@ -31,8 +39,11 @@ export default function LoginScreen() {
     setError(null);
 
     try {
-      const nextChallenge = await signIn(email, password);
-      setChallenge(nextChallenge);
+      const nextChallenge = await signIn(toEmail(username.trim()), password);
+      if (nextChallenge) {
+        setChallenge(nextChallenge);
+        setScreen('newPassword');
+      }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : '登入失敗。');
     } finally {
@@ -40,9 +51,39 @@ export default function LoginScreen() {
     }
   };
 
+  const handleSignUp = async () => {
+    if (!username.trim()) {
+      setError('請輸入帳號名稱。');
+      return;
+    }
+    if (password.length < 6) {
+      setError('密碼至少需要 6 個字元。');
+      return;
+    }
+    if (password !== confirmPwd) {
+      setError('兩次輸入的密碼不一致。');
+      return;
+    }
+
+    setBusy(true);
+    setError(null);
+
+    try {
+      const result = await signUp(username.trim(), password);
+      // Auto-confirmed by Lambda trigger, go straight to login
+      setInfo('帳號建立成功！請登入。');
+      setScreen('login');
+      setConfirmPwd('');
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : '註冊失敗。');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleNewPassword = async () => {
-    if (!challenge || newPassword.length < 8) {
-      setError('新密碼至少需要 8 個字元。');
+    if (!challenge || newPassword.length < 6) {
+      setError('新密碼至少需要 6 個字元。');
       return;
     }
 
@@ -55,6 +96,166 @@ export default function LoginScreen() {
       setError(caught instanceof Error ? caught.message : '設定新密碼失敗。');
     } finally {
       setBusy(false);
+    }
+  };
+
+  const switchToRegister = () => {
+    setScreen('register');
+    setError(null);
+    setInfo(null);
+  };
+
+  const switchToLogin = () => {
+    setScreen('login');
+    setError(null);
+    setInfo(null);
+    setChallenge(null);
+    setNewPassword('');
+    setConfirmPwd('');
+  };
+
+  const renderForm = () => {
+    switch (screen) {
+      case 'login':
+        return (
+          <>
+            <Text style={styles.cardTitle}>登入</Text>
+            <TextInput
+              style={styles.input}
+              value={username}
+              onChangeText={setUsername}
+              autoCapitalize="none"
+              autoCorrect={false}
+              placeholder="帳號名稱"
+              placeholderTextColor="#BBBBBB"
+              editable={!busy}
+            />
+            <TextInput
+              style={styles.input}
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+              placeholder="密碼"
+              placeholderTextColor="#BBBBBB"
+              editable={!busy}
+              onSubmitEditing={handleSignIn}
+            />
+
+            {error ? <Text style={styles.error}>{error}</Text> : null}
+            {info ? <Text style={styles.info}>{info}</Text> : null}
+
+            <TouchableOpacity
+              style={[styles.button, busy && styles.buttonDisabled]}
+              disabled={busy}
+              onPress={handleSignIn}
+              activeOpacity={0.8}
+            >
+              {busy ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={styles.buttonText}>登入</Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.switchButton} onPress={switchToRegister}>
+              <Text style={styles.switchText}>還沒有帳號？<Text style={styles.switchLink}>建立帳號</Text></Text>
+            </TouchableOpacity>
+          </>
+        );
+
+      case 'register':
+        return (
+          <>
+            <Text style={styles.cardTitle}>建立帳號</Text>
+            <TextInput
+              style={styles.input}
+              value={username}
+              onChangeText={setUsername}
+              autoCapitalize="none"
+              autoCorrect={false}
+              placeholder="帳號名稱"
+              placeholderTextColor="#BBBBBB"
+              editable={!busy}
+            />
+            <TextInput
+              style={styles.input}
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+              placeholder="密碼（至少 6 個字元）"
+              placeholderTextColor="#BBBBBB"
+              editable={!busy}
+            />
+            <TextInput
+              style={styles.input}
+              value={confirmPwd}
+              onChangeText={setConfirmPwd}
+              secureTextEntry
+              placeholder="確認密碼"
+              placeholderTextColor="#BBBBBB"
+              editable={!busy}
+              onSubmitEditing={handleSignUp}
+            />
+
+            {error ? <Text style={styles.error}>{error}</Text> : null}
+
+            <TouchableOpacity
+              style={[styles.button, busy && styles.buttonDisabled]}
+              disabled={busy}
+              onPress={handleSignUp}
+              activeOpacity={0.8}
+            >
+              {busy ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={styles.buttonText}>註冊</Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.switchButton} onPress={switchToLogin}>
+              <Text style={styles.switchText}>已有帳號？<Text style={styles.switchLink}>登入</Text></Text>
+            </TouchableOpacity>
+          </>
+        );
+
+      case 'newPassword':
+        return (
+          <>
+            <Text style={styles.cardTitle}>設定新密碼</Text>
+            <Text style={styles.challengeText}>
+              這是第一次登入，請設定一組正式密碼。
+            </Text>
+            <TextInput
+              style={styles.input}
+              value={newPassword}
+              onChangeText={setNewPassword}
+              secureTextEntry
+              placeholder="新密碼"
+              placeholderTextColor="#BBBBBB"
+              editable={!busy}
+              onSubmitEditing={handleNewPassword}
+            />
+
+            {error ? <Text style={styles.error}>{error}</Text> : null}
+
+            <TouchableOpacity
+              style={[styles.button, busy && styles.buttonDisabled]}
+              disabled={busy}
+              onPress={handleNewPassword}
+              activeOpacity={0.8}
+            >
+              {busy ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={styles.buttonText}>儲存並登入</Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.switchButton} onPress={switchToLogin}>
+              <Text style={styles.switchText}>返回登入</Text>
+            </TouchableOpacity>
+          </>
+        );
     }
   };
 
@@ -72,81 +273,7 @@ export default function LoginScreen() {
           </View>
 
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>
-              {challenge ? '設定新密碼' : '登入'}
-            </Text>
-
-            {!challenge ? (
-              <>
-                <TextInput
-                  style={styles.input}
-                  value={email}
-                  onChangeText={setEmail}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  keyboardType="email-address"
-                  placeholder="Email"
-                  placeholderTextColor="#BBBBBB"
-                  editable={!busy}
-                />
-                <TextInput
-                  style={styles.input}
-                  value={password}
-                  onChangeText={setPassword}
-                  secureTextEntry
-                  placeholder="密碼"
-                  placeholderTextColor="#BBBBBB"
-                  editable={!busy}
-                  onSubmitEditing={handleSignIn}
-                />
-              </>
-            ) : (
-              <>
-                <Text style={styles.challengeText}>
-                  這是第一次登入，請設定一組正式密碼。
-                </Text>
-                <TextInput
-                  style={styles.input}
-                  value={newPassword}
-                  onChangeText={setNewPassword}
-                  secureTextEntry
-                  placeholder="新密碼"
-                  placeholderTextColor="#BBBBBB"
-                  editable={!busy}
-                  onSubmitEditing={handleNewPassword}
-                />
-              </>
-            )}
-
-            {error ? <Text style={styles.error}>{error}</Text> : null}
-
-            <TouchableOpacity
-              style={[styles.button, busy && styles.buttonDisabled]}
-              disabled={busy}
-              onPress={challenge ? handleNewPassword : handleSignIn}
-              activeOpacity={0.8}
-            >
-              {busy ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <Text style={styles.buttonText}>
-                  {challenge ? '儲存並登入' : '登入'}
-                </Text>
-              )}
-            </TouchableOpacity>
-
-            {challenge ? (
-              <TouchableOpacity
-                style={styles.backButton}
-                onPress={() => {
-                  setChallenge(null);
-                  setNewPassword('');
-                  setError(null);
-                }}
-              >
-                <Text style={styles.backButtonText}>返回登入</Text>
-              </TouchableOpacity>
-            ) : null}
+            {renderForm()}
           </View>
         </View>
       </KeyboardAvoidingView>
@@ -198,6 +325,7 @@ const styles = StyleSheet.create({
   },
   challengeText: { color: '#666666', fontSize: 14, lineHeight: 21, marginBottom: 14 },
   error: { color: '#C86B6B', fontSize: 14, lineHeight: 20, marginBottom: 12 },
+  info: { color: '#6B9E5B', fontSize: 14, lineHeight: 20, marginBottom: 12 },
   button: {
     backgroundColor: '#222222',
     borderRadius: 999,
@@ -208,6 +336,7 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: { opacity: 0.65 },
   buttonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' },
-  backButton: { alignItems: 'center', paddingTop: 18 },
-  backButtonText: { color: '#777777', fontSize: 14 },
+  switchButton: { alignItems: 'center', paddingTop: 18 },
+  switchText: { color: '#777777', fontSize: 14 },
+  switchLink: { color: '#555555', fontWeight: '600' },
 });
