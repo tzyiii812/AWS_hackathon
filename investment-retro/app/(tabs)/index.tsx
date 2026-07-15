@@ -334,34 +334,35 @@ export default function HomeScreen() {
         if (portfolios.length < 2) return null;
 
         const now = new Date();
-        const oneYearAgoMs = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate()).getTime();
 
         // Sort portfolios oldest first
         const sorted = [...portfolios].sort(
           (a, b) => a.yearMonth.localeCompare(b.yearMonth)
         );
 
-        // Find the closest snapshot to one year ago
-        let pastSnapshot = sorted[0];
-        let bestDiff = Infinity;
-        for (const p of sorted) {
+        // 篩選出至少 1 個月以前的快照（排除最新的那一筆）
+        const latestYearMonth = sorted[sorted.length - 1].yearMonth;
+        const candidates = sorted.filter((p) => {
+          if (p.yearMonth === latestYearMonth) return false;
           const pDate = new Date(p.yearMonth.length > 7 ? p.yearMonth : p.yearMonth + '-01');
-          const diff = Math.abs(pDate.getTime() - oneYearAgoMs);
-          if (diff < bestDiff) {
-            bestDiff = diff;
-            pastSnapshot = p;
-          }
-        }
+          const monthsAgo = (now.getTime() - pDate.getTime()) / (30 * 24 * 60 * 60 * 1000);
+          return monthsAgo >= 1;
+        });
 
-        // Only show if within ~4 months of one year ago & not too recent
-        if (!pastSnapshot || bestDiff > 120 * 24 * 60 * 60 * 1000) return null;
-        const pastDate = new Date(pastSnapshot.yearMonth.length > 7 ? pastSnapshot.yearMonth : pastSnapshot.yearMonth + '-01');
-        const monthsAgo = (now.getTime() - pastDate.getTime()) / (30 * 24 * 60 * 60 * 1000);
-        if (monthsAgo < 3 || !latest) return null;
+        if (candidates.length === 0 || !latest) return null;
+
+        // 用日期當 seed 做「每日隨機」，讓同一天看到同一段回憶
+        const daySeed = now.getFullYear() * 10000 + (now.getMonth() + 1) * 100 + now.getDate();
+        const pastSnapshot = candidates[daySeed % candidates.length];
 
         // Build the memory narrative
         const ymParts = pastSnapshot.yearMonth.split('-');
         const displayDate = `${ymParts[0]} 年 ${parseInt(ymParts[1])} 月`;
+        const pastDate = new Date(pastSnapshot.yearMonth.length > 7 ? pastSnapshot.yearMonth : pastSnapshot.yearMonth + '-01');
+        const monthsAgo = Math.round((now.getTime() - pastDate.getTime()) / (30 * 24 * 60 * 60 * 1000));
+        const timeAgoText = monthsAgo >= 12
+          ? `${Math.floor(monthsAgo / 12)} 年${monthsAgo % 12 > 0 ? `${monthsAgo % 12} 個月` : ''}前`
+          : `${monthsAgo} 個月前`;
         const pastHoldings = pastSnapshot.holdings;
         const pastValue = pastSnapshot.totalMarketValue || 0;
 
@@ -386,7 +387,7 @@ export default function HomeScreen() {
         return (
           <View style={styles.card}>
             <Text style={styles.cardLabel}>🕰️ 投資回憶</Text>
-            <Text style={styles.retroTitle}>{displayDate}，你的投資組合長這樣</Text>
+            <Text style={styles.retroTitle}>{timeAgoText}（{displayDate}），你的投資組合長這樣</Text>
 
             <Text style={styles.retroNarrative}>
               那時候你持有 {pastHoldings.length} 檔股票

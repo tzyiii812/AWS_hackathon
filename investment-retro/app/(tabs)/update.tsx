@@ -16,6 +16,7 @@ import { useRouter } from 'expo-router';
 import { Text, View } from '@/components/Themed';
 import { useAuth } from '@/context/AuthContext';
 import { usePortfolio } from '@/context/PortfolioContext';
+import { usePortfolioHistory } from '@/context/PortfolioHistoryContext';
 import {
   createPortfolio,
   getPortfolioUploadUrl,
@@ -92,6 +93,7 @@ export default function UpdatePortfolioScreen() {
   const router = useRouter();
   const { getAccessToken } = useAuth();
   const { latest, setLatest } = usePortfolio();
+  const { refresh: refreshHistory } = usePortfolioHistory();
   const [step, setStep] = useState(0);
   const [selectedImage, setSelectedImage] = useState<SelectedImage | null>(null);
   const [screenshotKey, setScreenshotKey] = useState<string | null>(null);
@@ -361,25 +363,7 @@ export default function UpdatePortfolioScreen() {
   };
 
   const handleStep2Next = async () => {
-    // 儲存所有確認的賣出價格
-    // yearMonth 用「新快照的月份」，因為 useRealizedPnL 偵測賣出時用的是新期的 yearMonth
-    const yearMonth = new Date().toISOString().slice(0, 7);
-
-    for (const [symbol, conf] of Object.entries(sellConfirmations)) {
-      if (conf.status === 'confirmed' || conf.status === 'price_done') {
-        const price = parseFloat(conf.sellPrice);
-        if (!isNaN(price) && price > 0) {
-          const prev = latest?.holdings.find((h) => h.symbol === symbol);
-          const soldShares = prev?.shares ?? 0;
-          await confirmSellPrice(symbol, yearMonth, price, soldShares);
-        }
-      } else if (conf.status === 'skipped' || conf.status === 'not_sold') {
-        const prev = latest?.holdings.find((h) => h.symbol === symbol);
-        const soldShares = prev?.shares ?? 0;
-        await skipSellPrice(symbol, yearMonth, soldShares);
-      }
-    }
-
+    // 賣出價格將在 savePortfolio 中儲存（使用後端回傳的 yearMonth 確保 key 一致）
     setStep(3);
   };
 
@@ -406,7 +390,28 @@ export default function UpdatePortfolioScreen() {
         totalPnL,
       });
 
+      // 使用後端回傳的 yearMonth 儲存賣出價格，確保與 useRealizedPnL 偵測時的 key 一致
+      const yearMonth = result.portfolio.yearMonth;
+      for (const [symbol, conf] of Object.entries(sellConfirmations)) {
+        if (conf.status === 'confirmed' || conf.status === 'price_done') {
+          const price = parseFloat(conf.sellPrice);
+          if (!isNaN(price) && price > 0) {
+            const prev = latest?.holdings.find((h) => h.symbol === symbol);
+            const soldShares = prev?.shares ?? 0;
+            await confirmSellPrice(symbol, yearMonth, price, soldShares);
+          }
+        } else if (conf.status === 'skipped' || conf.status === 'not_sold') {
+          const prev = latest?.holdings.find((h) => h.symbol === symbol);
+          const soldShares = prev?.shares ?? 0;
+          await skipSellPrice(symbol, yearMonth, soldShares);
+        }
+      }
+
       setLatest(result.portfolio);
+
+      // 重新載入投資組合歷史，確保 useRealizedPnL 能偵測到新的賣出
+      await refreshHistory();
+
       setStep(4);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : '投資組合儲存失敗。');

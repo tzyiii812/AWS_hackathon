@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import {
   ActivityIndicator,
   RefreshControl,
@@ -9,6 +9,7 @@ import {
 import { useRouter } from 'expo-router';
 import { Text, View } from '@/components/Themed';
 import { usePortfolio } from '@/context/PortfolioContext';
+import { usePortfolioHistory } from '@/context/PortfolioHistoryContext';
 import { usePortfolioPnL } from '@/hooks/usePortfolioPnL';
 import { useRealizedPnL } from '@/hooks/useRealizedPnL';
 import { SellPricePrompt } from '@/components/SellPricePrompt';
@@ -27,8 +28,16 @@ import { SellPricePrompt } from '@/components/SellPricePrompt';
 export default function HoldingsScreen() {
   const router = useRouter();
   const { latest, loading, error, refreshLatest } = usePortfolio();
+  const { refresh: refreshHistory } = usePortfolioHistory();
   const pnl = usePortfolioPnL();
   const realized = useRealizedPnL();
+
+  const handleRefresh = useCallback(async () => {
+    await Promise.all([refreshLatest(), refreshHistory()]);
+    // portfolios 更新後 useRealizedPnL 的 useEffect 會自動重新讀取 sellPrices
+    // 但為了確保即時性，也主動觸發 realized refresh
+    realized.refresh();
+  }, [refreshLatest, refreshHistory, realized.refresh]);
 
   if (loading && !latest) {
     return (
@@ -63,7 +72,7 @@ export default function HoldingsScreen() {
       style={styles.container}
       showsVerticalScrollIndicator={false}
       refreshControl={
-        <RefreshControl refreshing={loading} onRefresh={refreshLatest} />
+        <RefreshControl refreshing={loading} onRefresh={handleRefresh} />
       }
     >
       <View style={styles.header}>
