@@ -29,10 +29,43 @@ export default function Root({ children }: { children: React.ReactNode }) {
 
 const responsiveBackground = `
 body {
-  background-color: #fff;
+  background-color: #E8E5E0;
 }
 @media (prefers-color-scheme: dark) {
   body {
+    background-color: #1a1a1a;
+  }
+}
+
+/* Mobile First: phone fullscreen, desktop fixed width centered */
+#root {
+  max-width: 430px;
+  margin-left: auto;
+  margin-right: auto;
+  background-color: #FAF9F7;
+  min-height: 100vh;
+  /* Subtle shadow to make the app look like a phone on desktop */
+  box-shadow: 0 0 40px rgba(0, 0, 0, 0.08);
+}
+
+@media (prefers-color-scheme: dark) {
+  #root {
     background-color: #000;
+  }
+}
+
+/* On mobile screens (<=430px), fill the entire viewport */
+@media (max-width: 430px) {
+  body {
+    background-color: #FAF9F7;
+  }
+  #root {
+    max-width: 100%;
+    box-shadow: none;
+  }
+  @media (prefers-color-scheme: dark) {
+    body {
+      background-color: #000;
+    }
   }
 }`;

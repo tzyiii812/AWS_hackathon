@@ -5,6 +5,7 @@ import {
   Image,
   ImageBackground,
   Modal,
+  Platform,
   StyleSheet,
   ScrollView,
   TextInput,
@@ -327,6 +328,12 @@ export default function MeScreen() {
   };
 
   const handleDelete = (goal: Goal) => {
+    if (Platform.OS === 'web') {
+      const confirmed = window.confirm(`確定要刪除「${goal.name}」嗎？`);
+      if (confirmed) deleteGoal(goal.id);
+      return;
+    }
+
     Alert.alert(
       '刪除目標',
       `確定要刪除「${goal.name}」嗎？`,
