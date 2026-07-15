@@ -17,6 +17,7 @@ import { Text, View } from '@/components/Themed';
 import { useAuth } from '@/context/AuthContext';
 import { usePortfolio } from '@/context/PortfolioContext';
 import { usePortfolioHistory } from '@/context/PortfolioHistoryContext';
+import { APP_CURRENT_YEAR_MONTH } from '@/config/appDate';
 import {
   createPortfolio,
   getPortfolioUploadUrl,
@@ -388,6 +389,7 @@ export default function UpdatePortfolioScreen() {
         totalMarketValue,
         totalCost,
         totalPnL,
+        yearMonth: APP_CURRENT_YEAR_MONTH,
       });
 
       // 使用後端回傳的 yearMonth 儲存賣出價格，確保與 useRealizedPnL 偵測時的 key 一致

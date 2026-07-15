@@ -14,6 +14,7 @@
 
 import { getStoredValue, setStoredValue } from '@/services/storage';
 import { getSellPricesFromServer, putSellPricesToServer } from '@/services/api';
+import { APP_TODAY } from '@/config/appDate';
 
 const STORE_KEY = 'sell_prices';
 
@@ -153,7 +154,7 @@ export async function confirmSellPrice(
     sellPrice,
     status: 'confirmed',
     soldShares,
-    updatedAt: new Date().toISOString(),
+    updatedAt: APP_TODAY.toISOString(),
   };
   all[key] = entry;
   await setLocal(all);
@@ -176,7 +177,7 @@ export async function skipSellPrice(
     sellPrice: null,
     status: 'skipped',
     soldShares,
-    updatedAt: new Date().toISOString(),
+    updatedAt: APP_TODAY.toISOString(),
   };
   all[key] = entry;
   await setLocal(all);

@@ -15,6 +15,7 @@ import { usePortfolioPnL } from '@/hooks/usePortfolioPnL';
 import { useRealizedPnL } from '@/hooks/useRealizedPnL';
 import { getImageReadUrl } from '@/services/api';
 import { AIProfileCard } from '@/components/ai-profile';
+import { appToday } from '@/config/appDate';
 
 const PLACEHOLDER_TIPS = [
   { id: '1', icon: '💡', title: '試試問 AI', content: '上傳持股截圖後，AI 可以分析你的投資組合配置。' },
@@ -333,7 +334,7 @@ export default function HomeScreen() {
       {(() => {
         if (portfolios.length < 2) return null;
 
-        const now = new Date();
+        const now = appToday();
 
         // Sort portfolios oldest first
         const sorted = [...portfolios].sort(

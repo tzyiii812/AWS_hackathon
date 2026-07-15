@@ -13,6 +13,7 @@ import { usePortfolioHistory } from '@/context/PortfolioHistoryContext';
 import { usePortfolioPnL } from '@/hooks/usePortfolioPnL';
 import { useRealizedPnL } from '@/hooks/useRealizedPnL';
 import { SellPricePrompt } from '@/components/SellPricePrompt';
+import { APP_TODAY_ISO } from '@/config/appDate';
 
 /**
  * 公式（由 usePortfolioPnL hook 統一計算）：
@@ -79,7 +80,7 @@ export default function HoldingsScreen() {
         <Text style={styles.title}>我的持股</Text>
         <Text style={styles.subtitle}>
           共 {pnl.holdings.length} 檔・更新於{' '}
-          {new Date(latest.createdAt).toLocaleDateString('zh-TW')}
+          {APP_TODAY_ISO}
         </Text>
       </View>
 
@@ -160,7 +161,7 @@ export default function HoldingsScreen() {
         ) : null}
         {pnl.dataDate ? (
           <Text style={styles.dataDateText}>
-            資料更新：{new Date(pnl.dataDate).toLocaleDateString('zh-TW')}
+            資料更新：{APP_TODAY_ISO}
           </Text>
         ) : null}
       </View>
