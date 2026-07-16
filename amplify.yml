@@ -1,21 +1,16 @@
 version: 1
-applications:
-  - appRoot: investment-retro
-    frontend:
-      phases:
-        preBuild:
-          commands:
-            - npm ci
-        build:
-          commands:
-            - npm run build:web
-            - echo "=== Build output check ==="
-            - ls dist/
-            - ls dist/_expo/static/js/web/ | head -3
-      artifacts:
-        baseDirectory: dist
-        files:
-          - '**/*'
-      cache:
-        paths:
-          - 'node_modules/**/*'
+frontend:
+  phases:
+    preBuild:
+      commands:
+        - cd investment-retro && npm ci
+    build:
+      commands:
+        - cd investment-retro && npm run build:web
+  artifacts:
+    baseDirectory: investment-retro/dist
+    files:
+      - '**/*'
+  cache:
+    paths:
+      - 'investment-retro/node_modules/**/*'
