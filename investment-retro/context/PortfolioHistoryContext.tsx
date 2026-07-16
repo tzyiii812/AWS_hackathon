@@ -12,6 +12,7 @@ import {
   getPortfolioHistory,
   PortfolioSnapshot,
 } from '@/services/api';
+import { APP_CURRENT_YEAR_MONTH } from '@/config/appDate';
 
 type PortfolioHistoryContextValue = {
   portfolios: PortfolioSnapshot[];
@@ -43,7 +44,14 @@ export function PortfolioHistoryProvider({ children }: { children: React.ReactNo
     try {
       const token = await getAccessToken();
       const result = await getPortfolioHistory(token, 24);
-      setPortfolios(result.portfolios);
+      // 將超出 App 模擬日期的 yearMonth 修正為 APP_CURRENT_YEAR_MONTH
+      const corrected = result.portfolios.map((p) => {
+        if (p.yearMonth > APP_CURRENT_YEAR_MONTH) {
+          return { ...p, yearMonth: APP_CURRENT_YEAR_MONTH };
+        }
+        return p;
+      });
+      setPortfolios(corrected);
     } catch (caught) {
       if (caught instanceof ApiError && caught.status === 404) {
         setPortfolios([]);

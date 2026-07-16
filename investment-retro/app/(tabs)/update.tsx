@@ -392,8 +392,11 @@ export default function UpdatePortfolioScreen() {
         yearMonth: APP_CURRENT_YEAR_MONTH,
       });
 
-      // 使用後端回傳的 yearMonth 儲存賣出價格，確保與 useRealizedPnL 偵測時的 key 一致
-      const yearMonth = result.portfolio.yearMonth;
+      // 強制使用 App 模擬日期的 yearMonth，避免後端用真實日期覆蓋
+      result.portfolio.yearMonth = APP_CURRENT_YEAR_MONTH;
+
+      // 使用 App 日期的 yearMonth 儲存賣出價格，確保與 useRealizedPnL 偵測時的 key 一致
+      const yearMonth = APP_CURRENT_YEAR_MONTH;
       for (const [symbol, conf] of Object.entries(sellConfirmations)) {
         if (conf.status === 'confirmed' || conf.status === 'price_done') {
           const price = parseFloat(conf.sellPrice);

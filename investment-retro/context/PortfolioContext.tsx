@@ -12,6 +12,7 @@ import {
   getLatestPortfolio,
   PortfolioSnapshot,
 } from '@/services/api';
+import { APP_CURRENT_YEAR_MONTH } from '@/config/appDate';
 import {
   getStoredValue,
   setStoredValue,
@@ -85,6 +86,8 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     try {
       const token = await getAccessToken();
       const result = await getLatestPortfolio(token);
+      // 強制使用 App 模擬日期，避免後端用真實日期
+      result.portfolio.yearMonth = APP_CURRENT_YEAR_MONTH;
       setLatest(result.portfolio);
       return result.portfolio;
     } catch (caught) {
