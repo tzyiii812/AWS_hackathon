@@ -9,6 +9,9 @@ applications:
         build:
           commands:
             - npm run build:web
+            - echo "=== Build output check ==="
+            - ls dist/
+            - ls dist/_expo/static/js/web/ | head -3
       artifacts:
         baseDirectory: dist
         files:
