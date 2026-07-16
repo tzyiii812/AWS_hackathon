@@ -347,13 +347,18 @@ export default function UpdatePortfolioScreen() {
     }
 
     // 初始化賣出確認狀態（只針對消失或減少的股票）
-    const currentBySymbol = new Set(
-      parsedHoldings.map((h) => h.symbol.toUpperCase())
+    const currentBySymbol = new Map(
+      parsedHoldings.map((h) => [h.symbol.toUpperCase(), h])
     );
     const newConfirmations: typeof sellConfirmations = {};
     for (const prev of latest?.holdings ?? []) {
-      if (!currentBySymbol.has(prev.symbol.toUpperCase()) && prev.shares > 0) {
+      if (!prev.shares || prev.shares <= 0) continue;
+      const curr = currentBySymbol.get(prev.symbol.toUpperCase());
+      if (!curr) {
         // 完全消失 → 可能是全部賣出
+        newConfirmations[prev.symbol] = { status: 'pending', sellPrice: '' };
+      } else if (curr.shares < prev.shares) {
+        // 股數減少 → 可能是部分賣出（減碼）
         newConfirmations[prev.symbol] = { status: 'pending', sellPrice: '' };
       }
     }
@@ -397,17 +402,26 @@ export default function UpdatePortfolioScreen() {
 
       // 使用 App 日期的 yearMonth 儲存賣出價格，確保與 useRealizedPnL 偵測時的 key 一致
       const yearMonth = APP_CURRENT_YEAR_MONTH;
+      const currentBySymbolMap = new Map(
+        parsedHoldings.map((h) => [h.symbol.toUpperCase(), h])
+      );
       for (const [symbol, conf] of Object.entries(sellConfirmations)) {
         if (conf.status === 'confirmed' || conf.status === 'price_done') {
           const price = parseFloat(conf.sellPrice);
           if (!isNaN(price) && price > 0) {
             const prev = latest?.holdings.find((h) => h.symbol === symbol);
-            const soldShares = prev?.shares ?? 0;
+            const curr = currentBySymbolMap.get(symbol.toUpperCase());
+            const prevShares = prev?.shares ?? 0;
+            const currShares = curr?.shares ?? 0;
+            const soldShares = prevShares - currShares;
             await confirmSellPrice(symbol, yearMonth, price, soldShares);
           }
         } else if (conf.status === 'skipped' || conf.status === 'not_sold') {
           const prev = latest?.holdings.find((h) => h.symbol === symbol);
-          const soldShares = prev?.shares ?? 0;
+          const curr = currentBySymbolMap.get(symbol.toUpperCase());
+          const prevShares = prev?.shares ?? 0;
+          const currShares = curr?.shares ?? 0;
+          const soldShares = prevShares - currShares;
           await skipSellPrice(symbol, yearMonth, soldShares);
         }
       }
@@ -627,6 +641,7 @@ export default function UpdatePortfolioScreen() {
               <Text style={styles.changeLabelNeg}>📉 減少或移除</Text>
               {comparison.decreased.map((item) => {
                 const isSold = item.currentShares === 0;
+                const soldShares = item.previousShares - item.currentShares;
                 const conf = sellConfirmations[item.symbol];
 
                 return (
@@ -634,14 +649,15 @@ export default function UpdatePortfolioScreen() {
                     <Text style={styles.changeItem}>
                       {item.name}：{item.previousShares.toLocaleString()} →{' '}
                       {item.currentShares.toLocaleString()} 股
+                      {!isSold ? `（減碼 ${soldShares.toLocaleString()} 股）` : ''}
                     </Text>
 
-                    {isSold && conf ? (
+                    {conf ? (
                       <View style={styles.sellConfirmArea}>
                         {conf.status === 'pending' ? (
                           <>
                             <Text style={styles.sellQuestion}>
-                              是否已經賣出 {item.name}？
+                              是否已經{isSold ? '賣出' : '減碼賣出'} {item.name}？
                             </Text>
                             <View style={styles.sellBtnRow}>
                               <TouchableOpacity
